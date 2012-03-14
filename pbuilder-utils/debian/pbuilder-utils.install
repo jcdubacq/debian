@@ -1,0 +1,3 @@
+lib/* /usr/lib/pbuilder-utils
+bin/* /usr/bin
+hooks/* /usr/lib/pbuilder-utils/hooks

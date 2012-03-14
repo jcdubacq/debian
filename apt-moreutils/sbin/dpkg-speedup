@@ -1,0 +1,43 @@
+#! /bin/sh
+set -e
+# Documentation
+HELPUTILS="${HELPUTILS:-/usr/lib/apt-moreutils}"
+NAME="dpkg-speedup"
+SHORTUSAGE="speeds up dpkg"
+USAGE="$NAME [--help]"
+MANSECTION=8
+#
+#BEGINARGS description
+###dpkg-speedup uses a collection of recipes to speed-up dpkg operation.
+###Use it as root.
+#ENDARGS description
+
+# Help
+if [ "$1" != "${1#--help}" ]; then
+    . "${HELPUTILS}/lib-help.sh"
+    help_options "$1" || echo "Unknown option $1"
+    do_help
+fi
+#
+
+if [ $(id -u) != 0 ]; then
+    echo "You should run this program as root."
+    exit 0
+fi
+
+# Follows a series of recipes to speed-up dpkg
+
+dpkg --clear-avail
+for list in /var/lib/apt/lists/*Packages; do
+    dpkg --merge-avail "${list}"
+done
+cp -ar /var/lib/dpkg/info /var/lib/dpkg/info.new
+if [ -d /var/lib/dpkg/info.bak ]; then
+  rm -rf /var/lib/dpkg/info.bak
+fi
+echo "Starting defragmentation"
+mv /var/lib/dpkg/info /var/lib/dpkg/info.bak
+mv /var/lib/dpkg/info.new /var/lib/dpkg/info
+if [ -d /var/lib/dpkg/info.bak ]; then
+  rm -rf /var/lib/dpkg/info.bak
+fi

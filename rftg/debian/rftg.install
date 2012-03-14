@@ -1,0 +1,3 @@
+usr/games/rftg
+debian/rftg.desktop /usr/share/applications
+debian/rftg.xpm usr/share/pixmaps

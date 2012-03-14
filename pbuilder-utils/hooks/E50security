@@ -1,0 +1,14 @@
+#!/bin/sh
+. /etc/chroot_settings
+if grep -q security.debian.org /etc/apt/sources.list; then
+    true
+else
+    if [ $(head -1 /etc/apt/sources.list|grep non-free|wc -l) = "1" ]; then
+        COMPONENTS="main contrib non-free"
+    else
+        COMPONENTS="main"
+    fi
+    echo "deb http://security.debian.org/ ${BASEDIST}/updates ${COMPONENTS}" >> /etc/apt/sources.list
+    apt-get update
+fi
+true

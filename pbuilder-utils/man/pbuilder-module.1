@@ -1,0 +1,122 @@
+.TH PBUILDER-MODULE "1" "April 2010" "" "User Commands"
+.SH NAME
+pbuilder-module \- build multiple kernel modules in a chroot
+.SH SYNOPSIS
+.B pbuilder-module [\fIoptions\fB]
+.SH DESCRIPTION
+This  program  will build modules using the module\-assistant package in
+various chroots, thus allowing automatic  construction  of  out\-of\-tree
+kernel  modules  for  multiple  (including old and no more available in
+debian archives) kernels.
+.PP
+The program will maintain a local repository of debian packages of
+kernel\-headers and build environment sufficient to build the kernel
+modules (e.g. nvidia kernel modules). Since it uses chroots, it can
+compile for a collection of kernels in amd64 or i386 arches.
+.SH OPTIONS
+.TP
+\fB\-\-help|\-h\fR
+This help text
+.TP
+\fB\-\-add|\-a\fR \fIkern=vers=arch\fR
+Enlist \fIkern\fR/\fIvers\fR/\fIarch\fR in candidates
+.TP
+\fB\-\-no\-auto|\-n\fR
+Do not enlist installed kernels and kernel headers 
+.TP
+\fB\-\-clean|\-c\fR
+Clean for all arches
+.TP
+\fB\-\-clean\-arch|\-ca\fR
+Clean for default host arch
+.TP
+\fB\-\-clean\-places|\-cp\fR
+Clean those places
+.TP
+\fB\-\-clean\-other\-arch|\-co\fR \fIarch\fR
+Clean for arch \fIarch\fR
+.TP
+\fB\-\-download\-only|\-d\fR
+Stop after downloading
+.TP
+\fB\-\-list\-targets|\-l\fR
+Download, list available targets, stop
+.TP
+\fB\-\-purge\fR
+Remove all current and old files; no backup!
+.TP
+\fB\-\-quiet|\-q\fR
+Be silent
+.TP
+\fB\-\-module|\-m\fR \fIkernelmodule\fR
+Set module to be \fIkernelmodule\fR
+.TP
+\fB\-\-version|\-v\fR \fIvers\fR
+Compile for module version \fIvers\fR
+.PP
+A package specification is of the form someversion=debian\-version=arch.
+For example: 2.6.24\-1\-686\-bigmem=2.6.24\-5=i386
+.SH KNOWN KERNEL MODULES
+.TP
+\fBnvidia\fR
+NVIDIA graphics driver
+.TP
+\fBnvidia173\fR
+NVIDIA legacy graphics driver (173xx)
+.TP
+\fBvirtualbox\fR
+x86 virtualization solution
+.SH ENVIRONMENT VARIABLES
+.TP
+\fBARCH|BASEDIST|BACKPORTS|DIST\fR
+The distribution
+.TP
+\fBMADEST\fR \fI(default ~/pbuilder/m\-a)\fR
+Storage place for the repository
+.TP
+\fBMODULE\fR \fI(default nvidia)\fR
+Module (as in \-m) 
+.TP
+\fBSNAPSHOTSITE\fR \fI(default http://snapshot\-dev.debian.org)\fR
+Snapshot archive URL
+.PP
+Any  deb  put  in  $MADEST/debs will be available to the
+compilation environment.
+.PP
+Currently,  the  module nvidia is default. Something else should be put
+there.
+.SH FILES
+.TP
+\fB$MADEST/results\fR
+Generated deb and changes files. Will persist after a standard clean. Not split among various architectures.
+.TP
+\fB$MADEST/new\fR
+Generated deb files.
+.TP
+\fB$MADEST/debs\fR
+Archive of kernel headers packages.
+.TP
+\fB$MADEST/graveyard\fR
+Deleted files from the debs section. Will persist after a standard clean.
+.TP
+\fB$MADEST/cache\fR
+Various cache files, useful for debugging. Not split among various architectures.
+.PP
+Unless told otherwise, all these directories are split among the  various
+architectures and will be deleted by invoking a standard clean.
+.SH AUTHORS
+Written by Jean-Christophe Dubacq
+.SH SEE ALSO
+.BR "debify" "(1), "
+.BR "pbuilder-createall" "(1), "
+.BR "pbuilder-setup" "(1), "
+.BR "pbuilder-updateall" "(1), "
+.BR "spbuilder" "(1), "
+.BR "uploadchangestool" "(1)"
+.SH COPYRIGHT
+Copyright \(co 2010 Jean-Christophe Dubacq.
+.PP
+BSD License.
+.br
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.

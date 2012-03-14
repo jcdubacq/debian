@@ -1,0 +1,255 @@
+#! /bin/sh
+set -e
+# Documentation
+HELPUTILS="${HELPUTILS:-/usr/lib/pbuilder-utils}"
+NAME="uploadchangestool"
+SHORTUSAGE="upload debian packages not already uploaded"
+USAGE="$NAME [<options>] <package> [<packages>]"
+SEEALSO="debify/1 pbuilder-createall/1 pbuilder-module/1 pbuilder-setup/1 pbuilder-updateall/1 spbuilder/1 uploadchangestool/1"
+#
+#BEGINARGS description
+###uploadchangestool  uses  the  environment  variable POOLURL and DIST to
+###check whether packages already exist in the pool designated by POOLURL.
+###If they do not, it creates a fake .changes file and uses dput to upload
+###it.
+#ENDARGS description
+
+# Help
+. "$HELPUTILS/lib-help.sh"
+
+# Settings
+POOLURL=${POOLURL:-"http://ftp.debian.org/debian/pool"}
+PACKAGES=""
+ASSUME_YES=1
+INPLACE=0
+
+
+#BEGINARGS options
+while [ -n "$1" ]; do
+    case "$1" in
+        --inplace|-i) ## Use current directory and links, not copies in /tmp
+            INPLACE=1
+            ;;
+        --pool|-p) #pool# Check packages against this debian repository
+            POOLURL="$2"
+            shift
+            ;;
+        --dist|-d) #dist# Make uploads to this distribution
+            DIST="$2"
+            shift
+            ;;
+        --no|-n) ## Assume default answer is no for uploads
+            ASSUME_YES=0
+            ;;
+        --yes|-y) ## Assume default answer is yes, do not ask
+            ASSUME_YES=2
+            ;;
+        --quiet|-q) ## Be more quiet
+            SILENT=1
+            ;;
+        *)
+            if [ -f "$1" ]; then
+                PACKAGES="${PACKAGES} ${1}"
+            else
+                help_options "$1" || echo "Unknown option $1"
+            fi
+            ;;
+    esac
+    shift
+done
+#ENDARGS options
+
+do_help
+
+if [ -z "$DIST" ] && [ -f "$HOME/.pbuilderrc" ]; then
+    . "$HOME/.pbuilderrc"
+fi
+if [ -z "$DIST" ]; then
+    echo "No distribution was specified."
+    exit 0
+fi
+if [ -z "$POOLURL" ]; then
+    echo "No pool was specified. No checking will be done."
+fi
+
+if [ -z "$SILENT" ]; then
+    echo "Uploading to distribution $DIST"
+fi
+
+if [ "$INPLACE" = "1" ]; then
+    TMPDIR=$(pwd)
+fi
+CACHEDIR=$(mktemp -d --tmpdir)
+trap exitcleanup EXIT
+exitcleanup() {
+    rm -rf $CACHEDIR
+}
+mkdir $CACHEDIR/debs
+mkdir $CACHEDIR/upload
+if [ "$INPLACE" = "1" ]; then
+    for i in $PACKAGES; do
+        ln "$i" $CACHEDIR/debs/
+    done
+else
+    for i in $PACKAGES; do
+        cp "$i" $CACHEDIR/debs/
+    done
+fi
+
+cd $CACHEDIR
+for i in $(find debs -type f); do
+    if [ -d DEBIAN ]; then
+        rm -rf DEBIAN
+    fi
+    dpkg-deb -e "$i"
+    dpkg --fsys-tarfile "$i" |tar xf - -C DEBIAN ./usr/share/doc/
+    package=$(grep ^Package: DEBIAN/control|head -1|cut -f2 -d:|sed -e 's/  *//g')
+    version=$(grep ^Version: DEBIAN/control|head -1|cut -f2- -d:|sed -e 's/  *//g')
+    section=$(grep ^Section: DEBIAN/control|head -1|cut -f2 -d:|sed -e 's/  *//g')
+    priority=$(grep ^Priority: DEBIAN/control|head -1|cut -f2 -d:|sed -e 's/  *//g')
+    arch=$(grep ^Architecture: DEBIAN/control|head -1|cut -f2 -d:|sed -e 's/  *//g')
+    source=""
+    source=$(grep ^Source: DEBIAN/control|head -1|cut -f2 -d:|sed -e 's/  *//g' -e 's/(.*)//g')
+    if [ -z "$source" ]; then
+        source="$package"
+    fi
+    CHANGELOG=''
+    if [ $(find DEBIAN/usr/share/doc -name 'changelog.Debian.gz'|wc -l) -gt 0 ]; then
+        find DEBIAN/usr/share/doc -name 'changelog.Debian.gz'|xargs -n 1 gunzip
+        CHANGELOG=$(find DEBIAN/usr/share/doc -name 'changelog.Debian')
+    elif [ $(find DEBIAN/usr/share/doc -iname 'changelog.Debian'|wc -l) -gt 0 ]; then
+        CHANGELOG=$(find DEBIAN/usr/share/doc -name 'changelog.Debian')
+    elif [ $(find DEBIAN/usr/share/doc -name 'changelog.gz'|wc -l) -gt 0 ]; then
+        CHANGELOG=$(find DEBIAN/usr/share/doc -name 'changelog')       
+    elif [ $(find DEBIAN/usr/share/doc -name 'changelog'|wc -l) -gt 0 ]; then
+        find DEBIAN/usr/share/doc -name 'changelog.Debian.gz'|xargs -n 1 gunzip
+        CHANGELOG=$(find DEBIAN/usr/share/doc -name 'changelog')       
+    fi
+    component=${section%%/*}
+    if [ "$component" = "$section" ]; then
+        component="main"
+    fi
+    poollocation=$(echo $source|cut -c1)
+    if [ "$source" != "${source#lib}" ]; then
+        poollocation="lib$poollocation"
+    fi
+    epochless=${version#*:}
+    URL="$POOLURL/${component}/${poollocation}/${source}/${package}_${epochless}_${arch}.deb"
+    FOUND=$(curl -s -I "$URL"|grep "HTTP/1.1 200 OK"|wc -l)
+    if [ "$FOUND" != 1 ]; then
+        URL="$POOLURL/${component}/${poollocation}/${source}/${package}_${version}_${arch}.deb"
+        FOUND=$(curl -s -I "$URL"|grep "HTTP/1.1 200 OK"|wc -l)
+    fi
+    j=$(basename $i)
+    if [ "$FOUND" != 1 ]; then
+        DIR=upload/${source}_${version}_${arch}
+        mkdir -p upload/${DIR}
+        touch upload/${DIR}/TODO
+        FILE=upload/${DIR}/base
+        echo "Format: 1.7" > $FILE
+        echo "Date: $(TZ=UTC date -R)" >> $FILE
+        grep ^Source: DEBIAN/control >> $FILE || echo "Source: $source" >> $FILE
+        FILE=upload/${DIR}/base2
+        grep ^Architecture: DEBIAN/control > $FILE
+        grep ^Version: DEBIAN/control >> $FILE
+        echo "Distribution: ${DIST}" >> $FILE
+        grep ^Urgency: DEBIAN/control >> $FILE || true
+        grep ^Maintainer: DEBIAN/control >> $FILE
+        if [ -n "$DEBEMAIL" ]; then
+            if [ "${DEBEMAIL%>*}" != "${DEBEMAIL}" ]; then
+                echo "Changed-By: ${DEBEMAIL}" >> $FILE
+            elif [ -n "$DEBFULLNAME" ]; then
+                echo "Changed-By: ${DEBFULLNAME} <${DEBEMAIL}>" >> $FILE
+            else
+                echo "Changed-By: ${DEBEMAIL}" >> $FILE
+            fi
+        fi
+        echo "Description:" >> $FILE
+        FILE=upload/${DIR}/desc        
+        grep ^Description: DEBIAN/control |sed -e "s/^Description: */ ${package} - /g"  >> $FILE
+        FILE=upload/${DIR}/binary        
+        echo -n " $package" >> $FILE
+        FILE=upload/${DIR}/md5
+        SIZE=$(stat -c%s "$i")
+        echo " $(md5sum "$i"|cut -c1-32) ${SIZE} ${section} ${priority} ${j}" >> $FILE
+        FILE=upload/${DIR}/sha256
+        echo " $(sha256sum "$i"|cut -c1-64) ${SIZE} ${j}" >> $FILE
+        FILE=upload/${DIR}/sha1
+        echo " $(sha1sum "$i"|cut -c1-40) ${SIZE} ${j}" >> $FILE
+        mv "$i" upload/${DIR}/
+        if [ -n "$CHANGELOG" ]; then
+            FILE=upload/${DIR}/changelog
+            dpkg-parsechangelog -c1 -l${CHANGELOG} |sed -ne '/^Changes:/,/^$/ p' > $FILE
+        fi
+    else
+        if [ -z "$SILENT" ]; then
+            echo "$i already found at ${URL}"
+        fi
+    fi
+done
+N=0
+for i in $(find upload -name TODO); do
+    N=$((N+1))
+    j=$(dirname $i)
+    cd "$j"
+    FILE="$(basename "$j").changes"
+    cat base > $FILE
+    echo -n "Binary:" >> $FILE
+    cat binary >> $FILE
+    echo >> $FILE
+    cat base2 >> $FILE
+    cat desc >> $FILE
+    if [ -f changelog ]; then
+        cat changelog >> $FILE
+    else
+        echo "Changes:" >> $FILE
+        echo " Binary upload to distribution ${DIST}" >> $FILE
+    fi
+    echo "Checksums-Sha256:" >> $FILE
+    cat sha256 >> $FILE
+    echo "Checksums-Sha1:" >> $FILE
+    cat sha1 >> $FILE
+    echo "Files:" >> $FILE
+    cat md5 >> $FILE
+    cat $FILE
+    if [ "$ASSUME_YES" -lt 2 ]; then
+        question="YES/no"
+        if [ "$ASSUME_YES" = 0 ]; then question="yes/NO"; fi
+        echo "Upload $FILE ? [$question]"
+        read a
+        if [ -z "$a" ] && [ "$ASSUME_YES" = 0 ]; then
+            a="no"
+        fi
+    else
+        a="yes"
+    fi
+    if [ "$a" = "n" ]||[ "$a" = "no" ]; then
+        echo "ok, not uploading"
+    else
+        debsign $FILE
+        dput $FILE
+    fi
+    cd ../../..
+done
+if [ "$N" = 0 ]; then
+    echo "Nothing to upload."
+fi
+
+exit 0
+# Documentation
+#BEGINARGS environment_variables
+case env in
+    POOLURL) ## Check this repository for the presence of packages (as in -p)
+        ;;
+    DIST) ## Distribution (as in -d; default is read from ~/.pbuilderrc)
+        ;;
+esac
+###
+###Many other environment variables will have effect on this program.
+#ENDARGS environment_variables
+#BEGINARGS files
+case file in
+    $HOME/.pbuilderrc) ## Created/modified by pbuilder-setup. Read if DIST is not set.
+        ;;
+esac
+#ENDARGS files

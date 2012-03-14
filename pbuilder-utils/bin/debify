@@ -1,0 +1,670 @@
+#!/bin/sh
+set -e
+# Documentation
+HELPUTILS="${HELPUTILS:-/usr/lib/pbuilder-utils}"
+NAME="debify"
+SHORTUSAGE="build a package in multiple pbuilders"
+USAGE="$NAME [<options>] <action> [<packages>]"
+SEEALSO="debify/1 pbuilder-createall/1 pbuilder-module/1 pbuilder-setup/1 pbuilder-updateall/1 spbuilder/1 uploadchangestool/1"
+#
+
+# Help
+. "$HELPUTILS/lib-help.sh"
+
+# Settings
+# Give priority to local arch
+DEFAULTARCHNAME=$(dpkg-architecture|grep ^DEB_HOST_ARCH=|cut -f2 -d=)
+ARCHES="amd64 i386"
+STOP=''
+RECOMPILE=1
+ASSUMEYES=0
+ASSUMEYESSTR="no"
+NEWSOURCE=0
+INCLUDESOURCE=0
+UNPACKSOURCE=0
+QUIET=0
+ACTION=none
+AFTERCLEAN=0
+LINTIAN_OPTIONS=${LINTIAN_OPTIONS:-"-I"}
+
+# Shortcuts
+NORMAL="$(tput sgr0)"
+BOLD="$(tput bold)"
+LOGFILE="/tmp/debify.log"
+EXTS="tar.bz2 tar.gz"
+
+error() {
+    echo "${BOLD}ERR:$sourcepkg: $@${NORMAL}"
+    echo "${BOLD}ERR:$sourcepkg: $@${NORMAL}" >> $LOGFILE
+    ERROR=1
+}
+warning() {
+    echo "${BOLD}WRN:${NORMAL}$sourcepkg: $@"
+    echo "${BOLD}WRN:${NORMAL}$sourcepkg: $@" >> $LOGFILE
+}
+log() {
+    echo "LOG:$sourcepkg: $@"
+    echo "LOG:$sourcepkg: $@" >> $LOGFILE
+}
+rm -f $LOGFILE
+touch $LOGFILE
+exitcleanup() {
+    a=$?
+    if [ "$a" != 0 ]; then
+        error "Abnormal exit"
+    fi
+    if [ "$HELP" = 0 ]; then
+        echo
+        echo "${BOLD}Summary of operations${NORMAL}"
+        cat $LOGFILE
+        rm -f $LOGFILE
+    fi
+    exit $a
+}
+trap exitcleanup EXIT
+sourcepkg='(init)'
+
+#BEGINARGS description
+###
+###This program will build and possibly upload a debian package stored under
+###a directory named after the package.
+###
+###The corresponding orig tarballs should reside in an origs directory beside
+###the package. If the orig tarball is not found, apt-get source is used
+###to find it. 3.0 (quilt)-style multiple components are supported.
+###
+###<package> is really the name of an unpacked debian source, plus
+###VCS information. <package> can be omitted if called from inside the source
+###directory. If <package> is <all>, all possible directories are tried.
+#ENDARGS description
+
+#BEGINARGS options
+while [ -n "$1" ] && [ -z "$STOP" ]; do
+    case "$1" in
+        --help|-h) ## This help text
+            HELP=help
+            STOP=1
+            ;;
+        --32|-3|-32|-i|--i386) ## First compilation for i386 arch
+            DEFAULTARCHNAME=i386
+            ;;
+        --64|-6|-64|-a|--amd64) ## First compilation for amd64 arch
+            DEFAULTARCHNAME=amd64
+            ;;
+        --clean|-c) ## Clean after build
+            AFTERCLEAN=1
+            ;;
+        --delete|-d) ## Delete source files (only with clean/purge)
+            DELETESOURCE=1
+            ;;
+        --quiet|-q) ## Remove normal output (only log lines and signing info)
+            QUIET=1
+            ;;
+        --source|-s) ## Force source inclusion in the source package
+            INCLUDESOURCE=1
+            ;;
+        --new-source|-n) ## Force generation of new upstream source
+            NEWSOURCE=1
+            ;;
+        --keep|-k) ## Keep former results, recompile only for new arches
+            RECOMPILE=0
+            ;;
+        --recompile|-r) ## Purge former results before starting (obsolete)
+            RECOMPILE=1
+            ;;
+        --unpack|-u) ## Force extraction of upstream source
+            UNPACKSOURCE=1
+            ;;
+        --really-yes|-yy) ## Do not ask whether to upload (for upload action)
+            ASSUMEYES=1
+            ;;
+        --yes|-y) ## Default answer to upload is yes instead of no
+            ASSUMEYESSTR="yes"
+            ;;
+        --lintian|-l) #lintian options# pass to the lintian call
+            LINTIAN_OPTIONS="$2"
+            shift
+            ;;
+        *)
+            help_options "$1" || ACTION="$1" && STOP=1
+            shift
+    esac
+    [ -z "$STOP" ]&&shift||true
+done
+###
+###Option <<unpack>> will work only for 3.0 format, and only if quilt is
+###installed. Components are not supported (yet). Unpacking is automatic if
+###only a debian dir is present and format is 3.0 (quilt).
+###
+###Option <<delete>> will work only for 3.0 format. It will keep the debian
+###and subversion directories only.
+###
+###Option <<source>> will be needed if you are uploading this tarball for the
+###first time to a mirror, and that this is not the first Debian revision.
+###This can happen if you deleted the tarball from the repository, or if you
+###use a new (different) repository.
+###
+###Option <<new-source>> will be needed if you are releasing a new tarball.
+###Debify will simply tar everything outside of the debian directory, the
+###.pc directory (used by the 3.0 (quilt) format) and the usual VCS
+###directories (.svn, .git). This may not be enough; the package's mechanisms
+###such as <make dist> may be better suited for this. Especially, it will
+###not unapply any quilt patches.
+#ENDARGS options
+
+case "$ACTION" in
+    info|orig|build|source|all|allbuild|up|upload|clean|purge)
+        HELP=
+        ;;
+    none)
+        [ -n "$HELP" ] || error "No action given"
+        ;;
+    *)
+        error "Unknown action $ACTION"
+        HELP=fail
+esac
+
+do_help
+
+log "$0 $@"
+
+if [ -f "debian/changelog" ]&&[ -z "$1" ]; then
+    package="$(basename $(pwd))"
+    set "$package"
+    cd ..
+fi
+if [ "$1" = "all" ]; then
+    package=$(find . -maxdepth 2 -type d -name debian|cut -f2 -d/|xargs echo)
+    set $package
+fi
+
+# From this point on, we should start GPG
+GPGINFOFILE=/tmp/debify-gpg-$(id -u)
+GPGAGENT=${GPGAGENT:-/usr/bin/gpg-agent}
+export GPG_AGENT_INFO
+STARTGPG=
+touch $GPGINFOFILE
+chmod 600 $GPGINFOFILE
+A=$GPG_AGENT_INFO
+if [ ! -x "$GPGAGENT" ]; then
+    GPGAGENT=/bin/true
+fi
+if ! $GPGAGENT 2>/dev/null; then
+    STARTGPG=1
+    . $GPGINFOFILE
+    if [ "$GPG_AGENT_INFO" != "$A" ]; then
+        if $GPGAGENT 2>/dev/null; then
+            STARTGPG=
+        fi
+    fi
+fi
+if [ -n "$STARTGPG" ]; then
+    log "Starting GPG agent"
+    gpg-agent --daemon --sh --write-env-file "$GPGINFOFILE"
+    . "$GPGINFOFILE"
+    if ! $GPGAGENT --verbose; then
+        warning "Could not start $GPGAGENT ($GPG_AGENT_INFO)"
+    fi
+fi
+definepackage() {
+    sourcepkg=$(dpkg-parsechangelog -c1|grep '^Source:'|cut -f2 -d' ')
+    sourceversion=$(dpkg-parsechangelog -c1|grep '^Version:'|cut -f2 -d' ')
+    sourcedistribution=$(dpkg-parsechangelog -c1|grep '^Distribution:'|cut -f2 -d' ')
+    versionwithoutepoch=${sourceversion#[0-9]*:}
+    epoch=
+    debianversion=
+    if [ "$versionwithoutepoch" != "$sourceversion" ]; then
+        epoch=${sourceversion%:$versionwithoutepoch}
+    fi
+    upstream=${sourceversion%-[0-9+.~]*}
+    if [ "$upstream" != "$versionwithoutepoch" ]; then
+        debianversion=${versionwithoutepoch#${upstream}-}
+    fi
+    poollocation=$(echo $package|cut -c1)
+    if [ "$package" != "${package#lib}" ]; then
+        poollocation="lib$poollocation"
+    fi
+    component="main"
+    comporsect=$(sed -ne '/^Source/,/^$/ p' < debian/control | grep ^Section:|cut -f2 -d' '|cut -f1 -d/)
+    if [ "$comporsect" = "non-free" ] || [ "$comporsect" = "contrib" ]; then
+        component="$comporsect"
+    fi
+    upstreamfile="${sourcepkg}_$upstream.orig"
+    versionfile="${upstream}${debianversion:+-${debianversion}}"
+    if [ "$QUIET" -lt 2 ]; then
+        echo "[$sourcepkg]"
+    fi
+    buildarches=""
+    pkgarches=""
+    where=$(basename $(pwd))
+    if [ -f debian/control ]; then
+        pkgarches=$(grep ^Architecture: debian/control|cut -f2 -d' '|sed -e "s/any/$ARCHES/g"|fmt -w 1|sort -u|xargs echo)
+        for ar in $DEFAULTARCHNAME $ARCHES all; do
+            if [ $(echo "$pkgarches"|fmt -w 1|grep $ar|wc -l) = 1 ] \
+                && [ $(echo "$buildarches"|fmt -w 1|grep $ar|wc -l) = 0 ]; then
+                if [ "$ar" != "all" ]||[ -z "$buildarches" ]; then
+                    if [ "$ar" = "all" ]; then
+                        ar="$DEFAULTARCHNAME"
+                    fi
+                    buildarches="$buildarches $ar"
+                fi
+            fi
+        done
+        if [ -z "$buildarches" ]; then
+            error "Package not buildable here"
+        fi
+    else
+        error "No control file"
+    fi
+    if [ "$QUIET" -lt 1 ]; then
+        for i in epoch upstream debianversion poollocation component upstreamfile versionfile pkgarches buildarches; do
+            eval "echo $i: \$$i"
+        done
+    fi
+}
+
+ensureorig() {
+    # Remote search of components of format 3.0 is not possible (yet?).
+    # Format 1.0
+    # debianfile="$sourcepkg_$upstream-$debianversion.diff.gz"
+    # Format 3.0
+    # debianfile="$sourcepkg_$upstream-$debianversion.diff.gz"
+    if [ "$(basename $(pwd))" != "$sourcepkg" ] && [ "$(basename $(pwd))" != "$sourcepkg-$upstream" ]; then
+        warning "Directory name is not $sourcepkg or $sourcepkg-$upstream"
+        if [ -L "../$sourcepkg" ]; then
+            log "Trying to use $sourcepkg symbolic link"
+        elif [ ! -e "../$sourcepkg" ]; then
+            where="$(pwd)"
+            cd ..
+            ln -s "$where" "$sourcepkg"
+            cd "$sourcepkg"
+            log "Creating $sourcepkg symbolic link"
+        else
+            error "Could not make a link named $sourcepkg"
+        fi
+        where=$(basename $(pwd))
+    fi
+    NOTFOUND=
+    REASON=
+    if [ -z "$debianversion" ]; then
+        # Debian native
+        REASON=native
+        return
+    fi
+    if [ "$NEWSOURCE" = "1" ]; then
+        # This never builds components
+        ext="tar.bz2"
+        rm -f  "${upstreamfile}.${ext}"
+        tar cjf "../${upstreamfile}.${ext}" --exclude=${package}/debian --exclude=${package}/.pc --exclude-vcs ${package}
+        cp "../${upstreamfile}.${ext}" ../origs/
+        REASON=forced
+        return
+    fi
+    # Beyond that, orig has to be found, or package building is stopped
+    # The quick way: already there,
+    REASON=present
+    for ext in $EXTS; do
+        if [ -f "../${upstreamfile}.${ext}" ]; then
+            return
+        fi
+    done
+    REASON=cache
+    for ext in $EXTS; do
+        if [ -f "../origs/${upstreamfile}.${ext}" ]; then
+            for file in $(find ../origs -maxdepth 1 -name "${upstreamfile}*.tar.*" -type f); do
+                if [ ! -f "../$(basename "$file")" ]; then
+                    
+                    cp "$file" ../
+                fi
+            done
+            return
+        fi
+    done
+    REASON=download
+    # Use apt-get
+    FINDABLE=$(LC_ALL=C apt-get  --print-uris source "$sourcepkg=$upstream" 1>/dev/null|grep 'W: Ignore unavailable version'|wc -l)
+    if [ "$FINDABLE" -lt 1 ]; then
+        cd ..
+        apt-get --download-only source "$sourcepkg=$upstream"
+        cleanpackage _toplevel_keeporig
+        cd $where
+    fi
+    for ext in $EXTS; do
+        if [ -f "../${upstreamfile}.${ext}" ]; then
+            return
+        fi
+    done
+    REASON=
+    NOTFOUND=1
+}
+
+checkorig() {
+    [ -z "$ERROR" ]||return||true
+    ensureorig
+    if [ "$NOTFOUND" = 1 ]; then
+        error "Orig file not found for $sourcepkg"
+    fi
+    upstreamfilename="${upstreamfile}.${ext}"
+    if [ ! -d ../origs ]; then
+        mkdir ../origs
+    fi
+    for file in $(find .. -maxdepth 1 -name "${upstreamfile}*.tar.*" -type f); do
+        if [ ! -f "../origs/$(basename "$file")" ]||[ $(stat -c %s "../origs/$upstreamfilename") != $(stat -c %s "../$upstreamfilename") ]; then
+            cp "$file" ../origs/
+        fi
+    done
+    log "Orig file found${REASON:+ ($REASON)}"
+    UNPACK=0
+    OTHERFILES=$(find . -maxdepth 1 -name .svn -prune -o '!' '(' -name debian -o -name . -o -name .svn ')' -print|wc -l)
+    if [ "$UNPACKSOURCE" = 1 ]||[ "$OTHERFILES" -lt 1 ]; then
+        if [ ! -f debian/source/format ]||[ $(grep '3.0 (' debian/source/format | wc -l) != 1 ]; then
+            error "Unable to unpack external source: not in format 3.0 (quilt)"
+        else
+            if grep -q '3.0 (quilt)' debian/source/format; then
+                UNPACK=1
+            fi
+	fi
+    fi
+    if [ "$UNPACK" = 1 ]; then
+        log "Unpacking source"
+        cd ..
+	if [ "$ext" = "tar.bz2" ]; then
+            xEXT="xjf"
+        else
+            xEXT="xzf"
+        fi
+        tar $xEXT "./${upstreamfilename}"  --transform "s#^[^/]*\$#${sourcepkg}#g" --transform "s#^[^/]*/#${sourcepkg}/#g" --show-transformed-names
+	cd "$sourcepkg"
+        if [ -d "debian/patches" ]; then
+            log "Patching source"
+            export QUILT_PATCHES=debian/patches
+            quilt push -a
+        fi
+    fi
+}
+cleanpackage() {
+    # clean toplevel
+    if [ "$1" != "${1#*_toplevel}" ]; then
+        for file in $(find .. -maxdepth 1 -name "${sourcepkg}_*.dsc" -type f); do
+            rm -f "$file"
+        done
+        for file in $(find .. -maxdepth 1 -name "${sourcepkg}_*-*.debian.*" -type f); do
+            rm -f "$file"
+        done
+        for file in $(find .. -maxdepth 1 -name "${sourcepkg}_*-*.diff.gz" -type f); do
+            rm -f "$file"
+        done
+        for file in $(find .. -maxdepth 1 -name "${sourcepkg}_*.orig*" -type f); do
+            if [ ! -f "../origs/$(basename $file)" ]; then
+                cp "$file" "../origs/$(basename $file)"
+            fi
+            if [ "$1" != "${1#*_keeporig}" ]; then
+                rm -f "$file"
+            fi
+        done
+        for ext in $EXTS; do
+            for file in $(find .. -maxdepth 1 -name "${sourcepkg}_*.${ext}" -type f); do
+                rm -f "$file"
+            done
+        done
+    fi
+    # clean results
+    if [ "$1" != "${1#*_results}" ]; then
+        if [ -f debian/control ]; then
+            for pkg in $sourcepkg $(grep ^Package: debian/control|cut -f2 -d:); do
+                find ../results -name "${pkg}_*" -print0 |xargs  -0 --no-run-if-empty rm -f
+            done
+            for ext in source $ARCHES ; do
+                rm -f ../results/logs/${sourcepkg}.${ext}
+                rm -f ../results/logs/${sourcepkg}.lintian-${ext}
+            done
+        else
+            warning "No control file for $sourcepkg: no results cleaning !"
+        fi
+    fi
+}
+cleanold() {
+    [ -z "$ERROR" ]||return||true
+    if [ "$RECOMPILE" = 1 ]; then
+        log "Purge for recompilation"
+        cleanpackage _results
+    fi
+}
+cleanafter() {
+    [ -z "$ERROR" ]||return||true
+    if [ "$AFTERCLEAN" = 1 ]; then
+        log "Purge after compilation"
+        cleanpackage _toplevel
+    fi
+}
+cleansource() {
+    [ -z "$ERROR" ]||return||true
+    if [ "$DELETESOURCE" = 1 ]; then
+        if [ ! -f debian/source/format ]||[ $(grep '3.0 (quilt)' debian/source/format | wc -l) != 1 ]; then
+            warning "Will not delete source files: not in format 3.0 (quilt)"
+        else
+            log "Cleaning source files from orig"
+            find . -maxdepth 1 -name .svn -prune -o '!' '(' -name debian -o -name . -o -name .svn ')' -print0 |xargs -0 rm -rf
+        fi
+    fi
+}
+dolintian() {
+    if [ ! -f "../$LINTIANLOG" ]; then
+        LINTIANERROR=0
+        lintian -i $LINTIAN_OPTIONS "$CHANGES" > ../${LINTIANLOG}||LINTIANERROR=1
+    fi
+    grep ^E: ../${LINTIANLOG}|while read line; do
+        line="${line#E: }"
+        srcsave="$sourcepkg";sourcepkg="lintian"
+        warning "$line"
+        sourcepkg="$srcsave"
+    done
+    grep ^W: ../${LINTIANLOG}|while read line; do
+        line="${line#W: }"
+        srcsave="$sourcepkg";sourcepkg="lintian"
+        warning "$line"
+        sourcepkg="$srcsave"
+    done
+    grep ^I: ../${LINTIANLOG}|while read line; do
+        line="${line#I: }"
+        srcsave="$sourcepkg";sourcepkg="lintian"
+        log "$line"
+        sourcepkg="$srcsave"
+    done
+    if [ "$LINTIANERROR" = 1 ]&&[ "$QUIET" -lt 1 ];then
+        cat ../${LINTIANLOG}
+    fi
+}
+buildsource() {
+    [ -z "$ERROR" ]||return||true
+    NEW=0
+    LOG="results/logs/$sourcepkg.source"
+    sourcefilename="${sourcepkg}_${versionfile}.dsc"
+    LINTIANLOG="results/logs/$sourcepkg.lintian-source"
+    CHANGES="../results/${sourcepkg}_${versionfile}_source.changes"
+    if [ ! -f "../${sourcefilename}" ]||[ ! -f "../${LOG}" ]; then
+        cd ..
+        dpkg-source -b "$where" > ${LOG}
+        cd $where
+        if [ ! -f "../${sourcefilename}" ]; then
+            error "Could not generate source package"
+            return
+        else
+            NEW=1
+            log "Generated source package"
+            echo "---" >> ../${LOG}
+            echo "Generated with INCLUDESOURCE=$INCLUDESOURCE" >> ../${LOG}
+            echo "---" >> ../${LOG}
+        fi
+    else
+        log "Found source package"
+    fi
+    if [ -f ../${LOG} ]&&[ -f "$CHANGES" ]&&[ "$NEW" = 0 ]&& grep -q "INCLUDESOURCE=$INCLUDESOURCE" ../${LOG}; then
+        # Already signed
+        log "Source changes already present"
+    else
+        if [ "$INCLUDESOURCE" = "1" ]; then
+            genchanges="-sa"
+        else
+            genchanges="-si"
+        fi
+        dpkg-genchanges $genchanges -S > $CHANGES
+        for file in $(sed -ne '/^Files/,/^$/ p' < "$CHANGES" | grep '^ ' | cut -f6 -d' '); do
+            cp "../$file" "../results/$file"
+        done
+        debsign "-e$DEBEMAIL" $CHANGES
+    fi
+    dolintian
+}
+buildbinary() {
+    [ -z "$ERROR" ]||return||true
+    BINARYARCH="$1"
+    FORARCHNAME="$2"
+    DIST=$sourcedistribution
+    CHANGES="../results/${sourcepkg}_${versionfile}_${FORARCHNAME}.changes"
+    LINTIANLOG="results/logs/$sourcepkg.lintian-$FORARCHNAME"
+    LOG="results/logs/$sourcepkg.$FORARCHNAME"
+    if [ -f "../${LOG}" ]; then
+        log "Already built for $FORARCHNAME"
+        dolintian
+        return
+    fi
+    unset BASEDIST ARCH BACKPORTS
+    ARCH="$FORARCHNAME"
+    . ~/.pbuilderrc
+    export DIST
+    if [ -f "$CHANGES" ]&&[ -f "../${LOG}" ]; then
+        log "Binary package already found"
+        return
+    fi
+    log "Building with DIST=$DIST debuild $BINARYARCH"
+    set -x
+    cd ..
+    cp "results/$sourcefilename" "results/$sourcefilename.save"
+    if [ "$QUIET" -lt 1 ]; then
+        spbuilder --build --logfile "$LOG" --buildresult results/ $BUILD_OPTIONS --debbuildopts $BINARYARCH "$sourcefilename" || ERROR=1
+    else
+        spbuilder --build --logfile "$LOG" --buildresult results/ --debbuildopts $BINARYARCH "$sourcefilename" > /dev/null 2>&1 || ERROR=1
+    fi
+    # pbuilder clobbers the signed dsc
+    mv "results/$sourcefilename.save" "results/$sourcefilename"
+    set +x
+    cd $where
+    if [ "$ERROR" = 1 ]; then
+        error "Build failed"
+    else
+        log "Build succeeded"
+        CHANGES="../results/${sourcepkg}_${versionfile}_${FORARCHNAME}.changes"
+        debsign "-e$DEBEMAIL" $CHANGES
+    fi
+    dolintian
+}
+
+upload() {
+    [ -z "$ERROR" ]||return||true
+    CHANGES="../results/${sourcepkg}_${versionfile}_${1}.changes"
+    if [ -f "$CHANGES" ]; then
+        ANSWER=$ASSUMEYES
+        if [ "$ANSWER" = 0 ];then
+            echo "Upload $CHANGES (yes/no)? [$ASSUMEYESSTR]"
+            read a
+            if [ -z "$a" ]; then
+                a="$ASSUMEYESSTR"
+            fi
+            if [ "$a" = y ] || [ "$a" = "yes" ]; then
+                ANSWER=1
+            fi
+        fi
+        if [ "$ANSWER" = 1 ]; then
+            dput $DPUT_OPTIONS "$CHANGES"||ERROR=1
+            if [ "$ERROR" = 1 ]; then
+                error "Upload failed for ${sourcepkg}/${1}"
+            fi
+        else
+            echo "$CHANGES not uploaded"
+        fi
+    fi
+}
+
+[ -d results/logs ] || mkdir -p results/logs
+while [ -n "$1" ]; do
+    cd "$1"
+    ERROR=
+    definepackage
+#BEGINARGS actions
+    case "$ACTION" in
+        info) ## Display information about the packages
+            ;;
+        orig) ## Retrieve the orig file and store a copy in origs/
+            checkorig
+            ;;
+        source) ## build and check source package
+            checkorig
+            cleanold
+            buildsource
+            ;;
+        build) ## build and check package on one arch
+            checkorig
+            cleanold
+            buildsource
+            buildbinary -b "$(echo ${buildarches}|sed -e 's/^ *//g'|cut -f1 -d' ')"
+            cleanafter
+            ;;
+        all|allbuild) ## build and check package on all arches
+            checkorig
+            cleanold
+            buildsource
+            binary="-b"
+            for i in ${buildarches}; do
+                buildbinary $binary "$i"
+                binary="-B"
+            done
+            cleanafter
+            ;;
+        up|upload) ## build, check and upload packages on all arches
+            checkorig
+            cleanold
+            buildsource
+            binary="-b"
+            for i in ${buildarches}; do
+                buildbinary $binary "$i"
+                binary="-B"
+            done
+            for i in source ${buildarches}; do
+                upload "$i"
+            done
+            cleanafter
+            ;;
+        clean) ## Clean orig and dsc files (all versions)
+            cleansource
+            cleanpackage _toplevel
+            ;;
+        purge) ## Clean all files (results, logs, orig, dsc) for all versions
+            PURGE=1
+            cleansource
+            cleanpackage _toplevel_results
+            ;;
+    esac
+    shift
+    cd ..
+###
+###All actions include the actions above, except for clean and purge.
+#ENDARGS actions
+done
+
+exit 0
+# Documentation
+#BEGINARGS environment_variables
+case env in
+    LINTIAN_OPTIONS) #(def. -I)# passed to lintian; overridden by -l option
+        ;;
+    BUILD_OPTIONS) ## passed to pbuilder
+        ;;
+    DPUT_OPTIONS) ## passed to dput
+        ;;
+    GPGAGENT) ## overrides the gpg-agent executable
+        ;;
+esac
+###
+###Many other environment variables will have effect on this program.
+#ENDARGS environment_variables

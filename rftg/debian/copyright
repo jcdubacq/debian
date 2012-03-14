@@ -1,0 +1,72 @@
+Format-Specification: http://wiki.debian.org/Proposals/CopyrightFormat
+Name: Race For The Galaxy AI
+Maintainer: Jean-Christophe Dubacq <jcdubacq1@free.fr>
+Packaged-Date: Thu Jan  7 11:26:51 CET 2010
+Source: http://www.keldon.net/rftg/
+
+Files: debian/rftg.png
+Files: debian/rftg.xpm
+Copyright: © 2008-2010 Keldon Jones <keldon@keldon.net>
+License: GPL-2+
+
+Files: debian/*
+Copyright: © 210 Jean-Christophe Dubacq
+License: GPL-2+
+
+Files: images.data
+Files: cards.txt
+Copyright: © 2007-2009 Rio Grande Games
+License: Gracious permission
+
+Files: *
+Copyright: © 2008-2010 Keldon Jones <keldon@keldon.net>
+License: GPL-2+
+
+License: GPL-2+
+ This program is free software; you can redistribute it
+ and/or modify it under the terms of the GNU General Public
+ License as published by the Free Software Foundation; either
+ version 2 of the License, or (at your option) any later
+ version.
+ .
+ This program is distributed in the hope that it will be
+ useful, but WITHOUT ANY WARRANTY; without even the implied
+ warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+ PURPOSE.  See the GNU General Public License for more
+ details.
+ .
+ You should have received a copy of the GNU General Public
+ License along with this package; if not, write to the Free
+ Software Foundation, Inc., 51 Franklin St, Fifth Floor,
+ Boston, MA  02110-1301 USA
+ .
+ On Debian systems, the full text of the GNU General Public
+ License version 2 can be found in the file
+ `/usr/share/common-licenses/GPL-2'.
+
+License: Gracious permission
+ Rio Grande Games is the publisher and holds all the copyrights for the
+ images and card names. They have graciously given permission for Keldon
+ Jones to distribute these, though they may not be redistributed or used
+ for any other purpose.
+
+X-Debian-Comment: Even though the code is under the GPL version 2 or any later version
+ (see COPYING), the following mail was received from the author:
+ https://bugzilla.redhat.com/show_bug.cgi?id=525764#c15
+ (and the next one):
+ .
+ "Rio Grande Games is the publisher and holds all the copyrights for the images
+ and card names. They have graciously given permission for me to distribute
+ these, though they may not be used for any other purpose."
+ .
+ "I'm afraid that, as I understand my agreement with Rio Grande, only I
+ can legally distribute the card and other images included with the
+ game (though other people could pursue similar agreements, and have).
+ In addition, my permission expires when/if a commercial "official"
+ computer version of the game is released.  Supposedly such a thing is in
+ the works, though I have my doubts as to whether it will be completed.
+ I think that distributing RFTG as a Fedora (or Debian or other distro)
+ package is not advisable."
+ .
+ So, this package is definitely non-free (the card image data at least).
+ Authors: Thomas Lehmann (conception), Claus Stephan, Martin Hoffmann, Mirko Suzuki (art)

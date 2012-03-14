@@ -1,0 +1,7 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+override_dh_auto_configure:
+	CC="gcc -Wl,--as-needed" dh_auto_configure -- --bindir=/usr/games --datarootdir=/usr/share/games
+override_dh_installdocs:
+	dh_installdocs --link-doc=rftg-data

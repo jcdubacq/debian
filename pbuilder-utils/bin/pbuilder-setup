@@ -1,0 +1,323 @@
+#!/bin/sh
+# Documentation
+HELPUTILS="${HELPUTILS:-/usr/lib/pbuilder-utils}"
+NAME="pbuilder-setup"
+SHORTUSAGE="creates a setup for multiple pbuilders"
+USAGE="$NAME [<--help>]"
+SEEALSO="debify/1 dpkg-architecture/1 pbuilder/8 pbuilder-createall/1 pbuilder-module/1 pbuilder-setup/1 pbuilder-updateall/1 spbuilder/1 uploadchangestool/1"
+#
+#BEGINARGS description
+###
+###pbuilder-setup asks simple questions and sets up a sample <<pbuilderrc>>
+###usable with spbuilder and debify.
+#ENDARGS description
+
+# Help
+if [ "$1" != "${1#--help}" ]; then
+    . "$HELPUTILS/lib-help.sh"
+    help_options "$1" || echo "Unknown option $1"
+    do_help
+fi
+
+PBUILDERRC=${PBUILDERRC:-~/.pbuilderrc}
+MAINDIR=${HOME}/pbuilder
+DISTRIBS="sid squeeze lenny lenny-backports"
+ALIASES="oldstable~etch stable~lenny testing~squeeze unstable~sid UNRELEASED~sid"
+BACKPORTABLE="lenny etch"
+MOREALIASES=""
+NOSECURITY="sid squeeze"
+BINDHOME="yes"
+BINDDATA=""
+
+#BEGINARGS default_architecture
+case $(uname -m) in
+    i386|i486|k6|k7|i686) ## support for i386 only
+        ARCHES="i386"
+        ;;
+    x86_64) ## support for amd64 and i386
+        ARCHES="amd64 i386"
+        ;;
+    *)
+        ARCHES="$(uname -m)"
+        echo "Warning: support was untested on arch $ARCHES"
+        ;;
+esac
+ALLOWED_ARCHES="$ARCHES"
+###
+###This value can be seen by invoking <uname -m>.
+###Remember that to work correctly in dual amd64/i386 mode, your kernel
+###has to be in amd64 mode (even if all other tools are i386).
+###
+###In case your architecture supports several architectures, do not
+###mention these when listing the various distributions you want if you
+###choose to support several of these: they will be automatically added
+###for you.
+#ENDARGS default_architectures
+
+DEBFULLNAME="$(getent passwd $(id -u)|cut -f5 -d:|sed -e 's/,*$//g')"
+DEBEMAIL="$(getent passwd $(id -u)|cut -f1 -d:)@$(domainname)"
+USENONFREE=""
+
+
+if [ -f "$PBUILDERRC" ]; then
+    . "$PBUILDERRC"
+    echo "Saving a copy of $PBUILDERRC to $PBUILDERRC.old"
+    cp "$PBUILDERRC" "$PBUILDERRC.old"
+fi
+
+echo "Choose the main directory [$MAINDIR]"
+read a
+[ -n "$a" ] && MAINDIR="$a"
+
+echo "Choose the distributions [$DISTRIBS]"
+read a
+[ -n "$a" ] && DISTRIBS="$a"
+
+echo "Choose the arches [$ARCHES]"
+read a
+[ -n "$a" ] && ARCHES="$a"
+
+echo "Choose your fullname [$DEBFULLNAME]"
+read a
+[ -n "$a" ] && DEBFULLNAME="$a"
+
+echo "Choose your email address [$DEBEMAIL]"
+read a
+[ -n "$a" ] && DEBEMAIL="$a"
+
+echo "Use non-free (anything to use, nothing not to use) [$USENONFREE]"
+read a
+[ -n "$a" ] && USENONFREE="$a"
+
+echo "Custom distribution aliases [$MOREALIASES]"
+read a
+[ -n "$a" ] && MOREALIASES="$a"
+
+echo "Custom distribution without security [$MORENOSECURITY]"
+read a
+[ -n "$a" ] && MORENOSECURITY="$a"
+
+echo "Bind-mount \$HOME (anything to bind, nothing not to) [$BINDHOME]"
+read a
+[ -n "$a" ] && BINDHOME="$a"
+
+echo "Bind-mount directories [$BINDDATA]"
+read a
+[ -n "$a" ] && BINDDATA="$a"
+
+echo "Backportable distributions [$BACKPORTABLE]"
+read a
+[ -n "$a" ] && BACKPORTABLE="$a"
+
+a="$(echo -n "$DISTRIBS"|sed -e 's/[-a-zA-Z ]*//g')"
+if [ -n "$a" ]; then
+    echo "\"$DISTRIBS\" is not a correct value"
+    exit 1
+fi
+
+NOSECURITY=" ${NOSECURITY} ${MORENOSECURITY} "
+
+for i in $ARCHES; do
+    case "$i" in
+        i386) ## 32 bit x86
+            ;;
+        amd64) ## Mixed 32/64 bit x86
+            if [ $(uname -m) != "x86_64" ]; then
+                echo "Warning: you do not have a x86 32/64-bit kernel."
+                echo "64bit images will not work correctly with this kernel."
+            fi
+            ;;
+        *)
+            if [ "$ARCHES" != "$ALLOWED_ARCHES" ]; then
+                echo "Warning: unsupported architecture combination"
+            fi
+            ;;
+    esac
+done
+
+DEFAULT=$(echo "$DISTRIBS"|cut -f1 -d' ')
+[ -n "$DEFAULT" ]||DEFAULT="sid"
+
+createdir() {
+    if [ ! -d "$1" ]; then
+        if [ -e "$1" ]; then
+            echo "Warning: $1 is not a directory"
+        else
+            $DEBUG mkdir -p "$1"
+            if [ ! -d "$1" ]; then 
+                if [ -z "$FIRSTFAIL" ]; then
+                    echo "You do not have enough rights to create the directory structure"
+                    echo "Please do these instructions as root before creating the images"
+                    DEBUG=echo
+                    FIRSTFAIL=1
+                    $DEBUG "mkdir -p '$1'"
+                fi
+            fi
+        fi
+    fi
+}
+
+linkfiles() {
+    if [ -d "/usr/lib/pbuilder-utils/hooks/" ]; then
+        for i in /usr/lib/pbuilder-utils/hooks/*; do
+#        for i in ./hooks/*; do
+            f=$(basename $i)
+            dest="${MAINDIR}/hooks/$DIST/$f"
+            if [ -h "$dest" ]; then
+                $DEBUG rm -f "$dest"
+            fi
+            if [ "${f%00settings}" != "$f" ]; then
+                $DEBUG rm -f "$dest"
+                sedline="s/^DIST=\$/&${DIST}/g;s/^BACKPORTS=\$/&${BACKPORTS}/g;s/^BASEDIST=\$/&${BASEDIST}/g;s/^ARCH=\$/&${ARCH}/g"
+                if [ -z "$DEBUG" ]; then
+                    cat $i | sed -e $sedline > "$dest"
+                    chmod 755 "$dest"
+                else
+                    $DEBUG "cat $i | sed -e '$sedline'"
+                fi
+            elif [ -e "$dest" ]&&[ -z "$DEBUG" ]||[ -f "$dest" ]; then
+                true
+            elif [ "${f%backports}" != "$f" ]&&[ -z "$BACKPORTS" ]; then
+                true
+            elif [ "${f%security}" != "$f" ]&&[ "${NOSECURITY#* ${BASEDIST} }" != "$NOSECURITY" ]; then
+                true
+            else
+                $DEBUG ln -s $i "$dest"
+            fi
+        done
+    fi
+}
+
+createdir "$MAINDIR"
+$DEBUG echo "Creation of the directory structure"
+createdir "${MAINDIR}/base"
+createdir "${MAINDIR}/build"
+for i in $DISTRIBS; do
+    BASEDIST=${i%-backports}
+    BACKPORTS=
+    if [ "$BASEDIST" != "$i" ]; then BACKPORTS="-backports";fi
+    for ARCH in $ARCHES; do
+        DIST="${BASEDIST}-${ARCH}${BACKPORTS}"
+        createdir ${MAINDIR}/result/${DIST}
+        createdir ${MAINDIR}/hooks/${DIST}
+        linkfiles
+    done
+    createdir ${MAINDIR}/aptcache/${BASEDIST}
+done
+if [ -n "$USENONFREE" ]; then
+    COMPONENTS="main contrib non-free"
+else
+    COMPONENTS="main"
+fi
+rm -f "$PBUILDERRC"
+BINDMOUNTS="$BINDDATA"
+if [ -n "$BINDHOME" ]; then
+    BINDMOUNTS="$HOME $BINDMOUNTS"
+fi
+echo '#! /bin/sh' > "$PBUILDERRC"
+for var in MAINDIR DISTRIBS ARCHES DEBEMAIL DEBFULLNAME USENONFREE COMPONENTS MOREALIASES MORENOSECURITY DEFAULT BINDHOME BINDDATA BACKPORTABLE; do
+    eval "echo \"$var='\$$var'\"" >> "$PBUILDERRC"
+done
+echo 'if [ -n "$PBCURRENTCOMMANDLINEOPERATION" ]; then' >> "$PBUILDERRC"
+echo '    unset ARCH BACKPORTS BASEDIST DIST' >> "$PBUILDERRC"
+echo '    DIST="$@"' >> "$PBUILDERRC"
+echo '    DIST=${DIST##*--basetgz }' >> "$PBUILDERRC"
+echo '    DIST=${DIST%%-base.tgz*}' >> "$PBUILDERRC"
+echo '    DIST=${DIST##*/}' >> "$PBUILDERRC"
+echo '    BINDMOUNTS="$@"' >> "$PBUILDERRC"
+echo '    BINDMOUNTS=${BINDMOUNTS##*--bindmounts }' >> "$PBUILDERRC"
+echo '    BINDMOUNTS=${BINDMOUNTS%% --*}' >> "$PBUILDERRC"
+echo 'else ' >> "$PBUILDERRC"
+echo "    BINDMOUNTS=\"$BINDMOUNTS \$BINDMOUNTSOPT\"" >> "$PBUILDERRC"
+echo 'fi' >> "$PBUILDERRC"
+
+echo '# DIST/BASEDIST/ARCH/BACKPORTS logic' >> "$PBUILDERRC"
+echo 'if [ -n "$BACKPORTS" ]; then' >> "$PBUILDERRC"
+echo '    BACKPORTS="-backports"' >> "$PBUILDERRC"
+echo 'fi' >> "$PBUILDERRC"
+echo 'if [ "$DIST" != "${DIST%-backports}" ]; then' >> "$PBUILDERRC"
+echo '    DIST="${DIST%-backports}";BACKPORTS="-backports"' >> "$PBUILDERRC"
+echo 'fi' >> "$PBUILDERRC"
+echo 'XARCH=" $ARCHES "' >> "$PBUILDERRC"
+echo 'if [ -n "$ARCH" ]; then' >> "$PBUILDERRC"
+echo '    if [ "$XARCH" = "${XARCH#* ${ARCH} }" ]; then' >> "$PBUILDERRC"
+echo '        echo "Warning: unsupported arch $ARCH - ignoring";ARCH=""' >> "$PBUILDERRC"
+echo '    fi' >> "$PBUILDERRC"
+echo 'fi' >> "$PBUILDERRC"
+echo 'DARCH=${DIST##*-}' >> "$PBUILDERRC"
+echo 'if [ "$DARCH" = "$DIST" ]||[ "$XARCH" = "${XARCH#* ${DARCH} }" ]; then' >> "$PBUILDERRC"
+echo '    DARCH=${ARCHES%% *}' >> "$PBUILDERRC"
+echo 'fi' >> "$PBUILDERRC"
+echo 'DIST=${DIST%-${DARCH}}' >> "$PBUILDERRC"
+echo 'if [ -z "$ARCH" ]; then ARCH="$DARCH"; fi' >> "$PBUILDERRC"
+echo 'XDISTRIBS=" ${DISTRIBS} "' >> "$PBUILDERRC"
+echo 'BASEDIST="${BASEDIST:-${DIST:-$DEFAULT}}"' >> "$PBUILDERRC"
+echo '' >> "$PBUILDERRC"
+echo 'case $BASEDIST in' >> "$PBUILDERRC"
+for i  in $(echo $MOREALIASES $ALIASES |fmt -w 1); do
+    alias=${i#*~}
+    aliasfor=${i%%~*}
+    echo "    $aliasfor)" >> "$PBUILDERRC"
+    echo "        BASEDIST='$alias'" >> "$PBUILDERRC"
+    echo "        ;;" >> "$PBUILDERRC"
+done
+echo 'esac' >> "$PBUILDERRC"
+echo 'if [ -z "$BASEDIST" ]||[ "$XDISTRIBS" = "${XDISTRIBS#* ${BASEDIST} }" ]; then' >> "$PBUILDERRC"
+echo '    echo "Error. $BASEDIST is not a suitable distribution."' >> "$PBUILDERRC"
+echo '    exit 1' >> "$PBUILDERRC"
+echo 'fi' >> "$PBUILDERRC"
+echo 'XBACKPORTABLE=" ${BACKPORTABLE} "' >> "$PBUILDERRC"
+echo 'if [ -n "$BACKPORTS" ]&&[ "$XBACKPORTABLE" = "${XBACKPORTABLE#* ${BASEDIST} }" ]; then' >> "$PBUILDERRC"
+echo '    echo "Warning: $BASEDIST is not backportable"' >> "$PBUILDERRC"
+echo '    unset BACKPORTS' >> "$PBUILDERRC"
+echo 'fi' >> "$PBUILDERRC"
+echo '' >> "$PBUILDERRC"
+echo '' >> "$PBUILDERRC"
+echo 'DIST="${BASEDIST}-${ARCH}${BACKPORTS}"' >> "$PBUILDERRC"
+echo '' >> "$PBUILDERRC"
+echo 'HOOKDIR="${MAINDIR}/hooks/${DIST}"' >> "$PBUILDERRC"
+echo 'BASETGZ="${MAINDIR}/base/${DIST}-base.tgz"' >> "$PBUILDERRC"
+echo 'BUILDRESULT="${MAINDIR}/result/$DIST"' >> "$PBUILDERRC"
+echo 'APTCACHE="${MAINDIR}/aptcache/${BASEDIST}"' >> "$PBUILDERRC"
+echo '' >> "$PBUILDERRC"
+echo 'BUILDPLACE="${MAINDIR}/build"' >> "$PBUILDERRC"
+echo '#END' >> "$PBUILDERRC"
+
+echo "Testing whether you can run pbuilder"
+if [ $(sudo /usr/sbin/pbuilder --help|wc -l) -lt 10 ]; then
+    echo "#Warning: it looks like you cannot run sudo pbuilder"
+fi
+exit 0
+#BEGINARGS environment_variables
+case env in
+    BASEDIST) ## Base distribution. Can be an alias.
+        ;;
+    DIST) ## Points to a specific combination distribution/arch/backport
+        ;;
+    ARCH) ## The arch part of the chroot
+        ;;
+    BACKPORTS) ## Non-empty for a backport-enabled distribution
+        ;;
+esac
+###
+###These environment variables are combined by the generated <pbuilderrc>,
+###and modified so that <<DIST>> contains all the necessary information and
+###<<BACKPORTS>>, <<BASEDIST>> and <<ARCH>> reflect the correct values.
+###<<DIST>> will accept the value <distribution>[-<arch>][-backports]. In
+###case of conflict: ARCH and BASEDIST take precedence (always); BACKPORTS
+###always adds the BACKPORTS part if the BASEDIST/DIST item point to a
+###backported distribution. Thus, one can either use
+###DIST=lenny-i386-backports or
+###DIST=lenny ARCH=i386 BACKPORTS=1 or
+###DIST=lenny-backports ARCH=i386 to point to the same environment.
+###If <<ARCH>> is omitted, the default <<ARCH>> is used (the build arch of
+###<dpkg-architecture>).
+#ENDARGS environment_variables
+#BEGINARGS files
+case file in
+    $HOME/.pbuilderrc) ## Created/modified by pbuilder-setup.
+    ;;
+esac
+###
+###Old file is kept on reruns. Values defined in it are used as defaults.
+#ENDARGS files

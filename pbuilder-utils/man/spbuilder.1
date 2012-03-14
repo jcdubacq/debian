@@ -1,0 +1,33 @@
+.TH SPBUILDER "1" "April 2010" "3\.3" "User Commands"
+.SH NAME
+spbuilder \- launches a pbuilder with correct personnality flags
+.SH SYNOPSIS
+.B spbuilder [\fIpbuilder options\fB]
+.SH DESCRIPTION
+spbuilder is a wrapper around pbuilder that sets the right personality
+flags to use amd64 or i386 images in the right mode.
+.PP
+\fIspbuilder\fR uses sudo to call pbuilder from a normal user account and
+sets the following arguments to pbuilder: BINDMOUNTS DEBEMAIL HOOKDIR
+APTCACHE COMPONENTS ARCHITECTURE BASETGZ BUILDPLACE BUILDRESULT.
+.SH FILES
+.TP
+\fB$HOME/.pbuilderrc\fR
+Created/modified by pbuilder\-setup.
+.SH AUTHORS
+Written by Jean-Christophe Dubacq
+.SH SEE ALSO
+.BR "debify" "(1), "
+.BR "pbuilder" "(8), "
+.BR "pbuilder-createall" "(1), "
+.BR "pbuilder-module" "(1), "
+.BR "pbuilder-setup" "(1), "
+.BR "pbuilder-updateall" "(1), "
+.BR "uploadchangestool" "(1)"
+.SH COPYRIGHT
+Copyright \(co 2010 Jean-Christophe Dubacq.
+.PP
+BSD License.
+.br
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.

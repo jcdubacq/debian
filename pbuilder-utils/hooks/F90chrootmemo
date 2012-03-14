@@ -1,0 +1,9 @@
+#!/bin/sh
+. /etc/chroot_settings
+echo "${DIST}" > /etc/debian_chroot
+if grep -q '#F90chrootmemo$' /etc/bash.bashrc; then
+    true
+else
+    printf 'PROMPT_COMMAND=\047echo -ne "\\033]0;(${DIST})${USER}@${HOSTNAME}: ${PWD}\007"\047 #F90chrootmemo\n' >> /etc/bash.bashrc
+fi
+

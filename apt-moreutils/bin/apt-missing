@@ -1,0 +1,148 @@
+#!/usr/bin/python
+"""check missing dependencies"""
+
+import getopt,sys
+import apt_pkg
+import apt.progress.text
+import os
+progusage="apt-missing [options] [packages]"
+shortoptions=["h","d","r","s","a","t:","p:"]
+longoptions=["help", "depends", "recommends", "suggests", "any", "type=", "package=","help-nroff"]
+argstype=['','','','','','string','string']
+explanation=['This help text',
+             'Missing Depends or Pre-Depends',
+             'Missing Recommends (default)',
+             'Missing Suggests',
+             'Missing positive dependency (as above)',
+             'Arbitrary dependency type (e.g. Enhances)',
+             'List of packages (all if none given)'
+             ]
+
+def fmt_dep(dep):
+    """Format a Dependency object [of apt_pkg] as a string."""
+    ret = dep.target_pkg.name
+    if dep.target_ver:
+        ret += " (%s %s)" % (dep.comp_type, dep.target_ver)
+    return ret
+
+def usage():
+    """Usage for this program."""
+    print progusage
+    for k in range(len(longoptions)):
+        if longoptions[k]=='help-nroff':
+            continue
+        if k<len(shortoptions):
+            x='-'+shortoptions[k][0:1]+'|--'+longoptions[k]
+            x=x+argstype[k]
+        else:
+            x='--'+longoptions[k]+argstype[k]
+        print "  %-20s %s" % (x,explanation[k])
+
+def usagenroff():
+    """Usage for this program in NROFF format."""
+    print progusage
+    print ".SH OPTIONS"
+    for k in range(len(longoptions)):
+        if longoptions[k]=='help-nroff':
+            continue
+        if k<len(shortoptions):
+            x='\\fB-'+shortoptions[k][0:1]+'\\fR|\\fB--'+longoptions[k]+'\\fR'
+        else:
+            x='\\fB--'+longoptions[k]+'\\fR'
+        if len(argstype[k])>0:
+            x=x+"\\fI"+argstype[k]+"\\fR"
+        print ".TP"
+        print x
+        print explanation[k]
+
+def main():
+    """The main function"""
+    apt_pkg.init_config()
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "".join(shortoptions),
+                                   longoptions)
+    except getopt.GetoptError:
+        usage()
+        sys.exit(1)
+    xtypes=[]
+    packages=[]
+    for o,a in opts:
+        if o in ("-h","--help"):
+            usage()
+            sys.exit()
+        elif o in ("--help-nroff"):
+            usagenroff()
+            sys.exit()
+        elif o in ("-d","--depends"):
+            xtypes.append('Depends')
+            xtypes.append('Pre-Depends')
+        elif o in ("-r","--recommends"):
+            xtypes.append('Recommends')
+        elif o in ("-s","--suggests"):
+            xtypes.append('Suggests')
+        elif o in ("-a","--any"):
+            xtypes.extend(['Depends','Pre-Depends','Recommends','Suggests'])
+        elif o in ("-t","--type"):
+            xtypes.extend(a.split(' '))
+        elif o in ("-p","--package"):
+            packages.extend(a.split(' '))
+        else:
+            assert False, "unhandled option"
+    for p in args:
+        packages.extend(p.split(' '))
+    if len(xtypes)==0:
+        xtypes=['Depends','Pre-Depends','Recommends']
+    apt_pkg.init_system()
+    f = open('/dev/null', 'w')
+    cache=apt_pkg.Cache(apt.progress.text.OpProgress(f))
+    f.close()
+    defective={}
+    claimed={}
+    for xtype in xtypes:
+        defective[xtype]=0
+    for pkg in sorted(cache.packages, key=lambda pkg: pkg.name):
+        if not(pkg.name in packages) and len(packages)>0:
+            continue;
+        version=pkg.current_ver
+        if version != None and pkg.current_state == apt_pkg.CURSTATE_INSTALLED:
+            for dtype,clauses in version.depends_list.iteritems():
+                if dtype in xtypes:
+                    missing=[]
+                    for clause in clauses:
+                        found=False
+                        for dep in clause:
+                            if dep.target_pkg.current_state == apt_pkg.CURSTATE_INSTALLED:
+                                found=True
+                                break
+                        if not(found):
+                            for dep in clause:
+                                tpkg=dep.target_pkg
+                                if tpkg.provides_list:
+                                    for name,x,tver in tpkg.provides_list:
+                                        if tver.parent_pkg.current_ver==None:
+                                            continue
+                                        if tver.parent_pkg.current_state != apt_pkg.CURSTATE_INSTALLED:
+                                            continue
+                                        if tver.ver_str==tver.parent_pkg.current_ver.ver_str:
+                                            found=True
+                                            break
+
+                        if not(found):
+                            missing.append(clause)
+                    if len(missing)>0:
+                        bugfound=True
+                        print "# Package %s has some %s missing:" % (pkg.name,
+                                                                      dtype)
+                        for clause in missing:
+                            string=" | ".join(fmt_dep(dep) for dep in clause)
+                            if string in claimed:
+                                claimed[string]=claimed[string]+1
+                            else:
+                                claimed[string]=1
+                            print " | ".join(fmt_dep(dep) for dep in clause)
+                        defective[dtype]=defective[dtype]+1
+    for xtype in xtypes:
+        print "## \"%s\" broken in %d packages" % (xtype,defective[xtype])
+
+if __name__ == '__main__':
+    main() 

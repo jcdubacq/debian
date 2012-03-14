@@ -1,0 +1,564 @@
+#!/bin/sh
+set -e
+# Documentation
+HELPUTILS="${HELPUTILS:-/usr/lib/pbuilder-utils}"
+NAME="pbuilder-module"
+SHORTUSAGE="build multiple kernel modules in a chroot"
+USAGE="$NAME [<options>]"
+SEEALSO="debify/1 pbuilder-createall/1 pbuilder-module/1 pbuilder-setup/1 pbuilder-updateall/1 spbuilder/1 uploadchangestool/1"
+#
+#BEGINARGS description
+###This  program  will build modules using the module-assistant package in
+###various chroots, thus allowing automatic  construction  of  out-of-tree
+###kernel  modules  for  multiple  (including old and no more available in
+###debian archives) kernels.
+###
+###The program will maintain a local repository of debian packages of
+###kernel-headers and build environment sufficient to build the kernel
+###modules (e.g. nvidia kernel modules). Since it uses chroots, it can
+###compile for a collection of kernels in amd64 or i386 arches.
+#ENDARGS description
+
+# Help
+. "$HELPUTILS/lib-help.sh"
+
+APTGET="apt-get --force-yes --assume-yes --no-install-recommends --allow-unauthenticated"
+if [ -r ~/.pbuilderrc ]; then
+    . ~/.pbuilderrc
+fi
+DEST=${MADEST:-${MAINDIR:-${HOME}/pbuilder}/m-a}
+DEBIANSITE=${DEBIANSITE:-"ftp://ftp.debian.org/debian/pool"}
+SNAPSHOT=${SNAPSHOTSITE:-"http://snapshot.debian.org"}
+tmpfile=$(mktemp)
+tmpfilebis=$(mktemp)
+CACHEDIR=${DEST}/cache
+trap exitcleanup EXIT
+exitcleanup() {
+    rm -rf $tmpfile $tmpfilebis
+}
+
+ADD=""
+VERSION=""
+NOAUTO=""
+SILENT=0
+MODULE=${MODULE:-"nvidia"}
+MODULE_VERSION=""
+CURARCH="$(dpkg-architecture -qDEB_BUILD_ARCH)"
+CLEANPLACES="new debs cache"
+
+#BEGINARGS options
+while [ -n "$1" ]; do
+    case "$1" in
+        --help|-h) ## This help text
+            HELP="help"
+            shift
+            ;;
+        --add|-a) #kern=vers=arch# Enlist <kern>/<vers>/<arch> in candidates
+            ADD="${ADD} $2"
+            shift 2
+            ;;
+        --no-auto|-n) ## Do not enlist installed kernels and kernel headers 
+            NOAUTO=1
+            shift
+            ;;
+        --clean|-c) ## Clean for all arches
+            CLEAN="${ARCHES}"
+            shift
+            ;;
+        --clean-arch|-ca) ## Clean for default host arch
+            CLEAN="${CURARCH}"
+            shift
+            ;;
+        --clean-places|-cp) ## Clean those places
+            CLEANPLACES="${2}"
+            shift 2
+            ;;
+        --clean-other-arch|-co) #arch# Clean for arch <arch>
+            CLEAN="${2}"
+            shift 2
+            ;;
+        --download-only|-d) ## Stop after downloading
+            DOWNLOADONLY=1
+            shift
+            ;;
+        --list-targets|-l) ## Download, list available targets, stop
+            LISTANDSTOP=1
+            shift
+            ;;
+        --purge) ## Remove all current and old files; no backup!
+            NOAUTO=1
+            PURGE=1
+            shift
+            ;;
+        --quiet|-q) ## Be silent
+            SILENT=1
+            shift
+            ;;
+        --module|-m) #kernelmodule# Set module to be <kernelmodule>
+            MODULE="${2}"
+            shift 2
+            ;;
+        --version|-v) #vers# Compile for module version <vers>
+            MODULE_VERSION="${2}"
+            shift 2
+            ;;
+        *)
+            help_options "$1" || echo "Unknown option $1"
+            shift
+            ;;
+    esac
+done
+###
+###A package specification is of the form someversion=debian-version=arch.
+###For example: 2.6.24-1-686-bigmem=2.6.24-5=i386
+#ENDARGS options
+
+do_help
+
+if [ -z "$NOAUTO" ]&&[ -x /usr/bin/aptitude ]; then
+    # Here, we use CURARCH, for we are investigating currently installed packages,
+    # not preferred compilation environments
+    KAUTOMATIC=$(aptitude --disable-columns -F "%p=%v=${CURARCH}" search '~i~n^linux-image-2.[0-9].[0-9][0-9]*-'|sed -e 's/^linux-image-//g')
+    HAUTOMATIC=$(aptitude --disable-columns -F "%p=%v=${CURARCH}" search '~i~n^linux-headers-2.[0-9].[0-9][0-9]*-'|sed -e 's/^linux-headers-//g')
+    ADD="${ADD} ${KAUTOMATIC} ${HAUTOMATIC}"
+fi
+
+if [ -n "$PURGE" ]; then
+    echo "Purging all..."
+    rm -rf ${DEST}
+    exit 0
+fi
+for A in ${ARCHES}; do
+    for B in debs/${A} results cache graveyard/${A} new/${A}; do
+        if [ ! -d "${DEST}/${B}" ]; then
+            mkdir -p "${DEST}/${B}"
+        fi
+    done
+done
+
+if [ -n "$CLEAN" ]; then
+    for a in ${CLEAN}; do
+        echo "Cleaning ${CLEANPLACES} for ${a}..."
+        for p in ${CLEANPLACES}; do
+            if [ "$p" != "results" ] && [ "$p" != "cache" ]; then
+                touch  ${DEST}/${p}/${a}/Packages
+                for b in ${DEST}/${p}/${a}/*; do
+                    if [ "$p" = "debs" ]; then
+                        mv "$b" ${DEST}/graveyard/${a}/
+                    else
+                        rm -f "$b"
+                    fi
+                    rm -f ${DEST}/graveyard/${a}/Packages
+                done
+            else
+                touch  ${DEST}/${p}/Packages
+                for b in ${DEST}/${p}/*; do
+                    rm -f "$b"
+                    rm -f ${DEST}/graveyard/Packages
+                done
+            fi
+        done
+    done
+    exit 0
+fi
+#BEGINARGS known_kernel_modules
+case $MODULE in
+    nvidia) ## NVIDIA graphics driver
+        MODULE_NAME=nvidia-kernel
+        MODULE_SOURCE_PKG=nvidia-graphics-drivers
+        MODULE_SOURCE=nvidia-kernel-source
+        MODULE_ARCH=any
+        MODULE_COMPONENT=non-free
+        ;;
+    nvidia173) ## NVIDIA legacy graphics driver (173xx)
+        MODULE_NAME=nvidia-kernel-legacy-173xx
+        MODULE_SOURCE_PKG=nvidia-graphics-drivers-legacy-173xx
+        MODULE_SOURCE=nvidia-kernel-legacy-173xx-source
+        MODULE_ARCH=any
+        MODULE_COMPONENT=non-free
+        ;;
+    virtualbox) ## x86 virtualization solution
+        MODULE_NAME=virtualbox-ose-modules
+        MODULE_SOURCE_PKG=virtualbox-ose
+        MODULE_SOURCE=virtualbox-ose-source
+        MODULE_ARCH=all
+        MODULE_COMPONENT=main
+        ;;
+    *)
+        echo "Unknown module $MODULE"
+        echo "Please report a bug"
+        exit 0
+        ;;
+esac
+#ENDARGS known_kernel_modules
+if [ -z "$MODULE_VERSION" ]; then
+    MODULE_VERSION=$(LANG=C apt-cache policy ${MODULE_SOURCE}|grep Candidate|cut -f2 -d:|sed -e 's/^ *//g')
+    if [ -z "${MODULE_VERSION}" ]; then
+        echo "I cannot find ${MODULE_SOURCE}. Use --version to override."
+        exit 0
+    fi
+fi
+
+pkg=""
+if [ -n "$ADD" ]; then
+    echo "$ADD"|fmt -w 1|sed -e 's/^ */linux-headers-/g' >> $tmpfilebis
+fi
+cat $tmpfilebis $tmpfilebis >> $tmpfile
+a=$(LANG=C sort < $tmpfile | uniq -u | wc -l)
+if [ "$a" -gt 0 ] && [ "$SILENT" -lt 1 ]; then
+    echo "Some installed kernels do not have any matching linux-headers packages"
+    LANG=C sort < $tmpfile | uniq -u | cut -f1,2 -d= | xargs echo sudo apt-get install
+fi
+cat $tmpfile >> $tmpfilebis
+LANG=C sort -u $tmpfilebis > $tmpfile
+sed  -E -ne  's/^linux-headers-([0-9].[0-9]+.[0-9]+-(([0-9]+)|(trunk)))-(.*)=([^=]*)=(.*)$/\1=\5=\6=\7/g;t ok' -e 'd' -e ':ok' -e "h;s/(.*)-([^-]+)=(.*)=(.*)=(.*)/KVERS=\"\1-\2-\3\";KCOMMON=\"\1-\2\";KBUILD=\"\1\";KERNEL=\"\4\";ARCH=\"\5\"/g;p" < $tmpfile > $tmpfilebis
+NOTFOUND=""
+NEWFOUND=""
+
+download_with_curl() {
+    FAILED=0
+    if [ ! -f "$URLDEST" ]; then
+        if [ "$SILENT" -lt 1 ]; then
+            echo "Downloading $URL"
+        fi
+        curl -s -f --output "$URLDEST" --url "$URL" || FAILED=1
+        MARKER=$(head -n 1 "$URLDEST" |cut -c1-4)
+        if [ "$1" = "deb" ]; then
+            if [ "$MARKER" != '!<ar' ]; then
+                rm -f "$URLDEST"
+                FAILED=1
+            fi
+        fi
+    fi
+}
+search_local() {
+    LFOUND=
+    if [ -f "${FILEDEST}" ]; then
+        WHERE="the repository"
+        LFOUND=1
+        return
+    fi
+    for xpath in "the graveyard:${DEST}/graveyard/${ARCH}" "the current directory:." "apt's cache:/var/cache/apt/archives" "my own cache:${CACHEDIR}"; do
+        xxpath="${xpath##*:}"
+        xnpath="${xpath%:*}"
+        if [ -f "${xxpath}/${filename}" ]; then
+            cp "${xxpath}/${filename}" "${FILEDEST}"
+            WHERE="${xnpath}"
+            if [ "$SILENT" -lt 1 ]; then
+                echo "Found ${filename} in ${WHERE}."
+            fi
+            NEWFOUND="${NEWFOUND} ${filename}"
+            LFOUND=1
+            return
+        fi
+    done
+}
+search_remote() {
+    LFOUND=
+    download_with_curl
+    if [ "$FAILED" = 0 ]; then
+        if grep -q " $filename\$" "$URLDEST"; then
+            URL="${URL}${filename}"
+            URLDEST="${CACHEDIR}/${filename}"
+            download_with_curl deb
+            if [ "$FAILED" = 0 ]; then
+                cp "${CACHEDIR}/${filename}" "${DEST}/debs/${ARCH}/${filename}"
+                WHERE="Debian ftpsite"
+                if [ "$SILENT" -lt 1 ]; then
+                    echo "Found ${filename} in ${WHERE}."
+                fi
+                LFOUND=1
+                NEWFOUND="${NEWFOUND} ${filename}"
+                return
+            fi
+        fi
+    fi
+}
+search_snapshot() {
+    LFOUND=
+    download_with_curl
+    if [ "$FAILED" = 0 ]; then
+        adr=$(grep "$filename" "$URLDEST"|grep href=./archive|cut -f2 -d\")
+        if [ -n "$adr" ]; then
+            URL="${SNAPSHOT}${adr}"
+            URLDEST="${CACHEDIR}/${filename}"
+            download_with_curl deb
+            if [ "$FAILED" = 0 ]; then
+                cp "${CACHEDIR}/${filename}" "${DEST}/debs/${ARCH}/${filename}"
+                WHERE="Debian snapshot"
+                if [ "$SILENT" -lt 1 ]; then
+                    echo "Found ${filename} in ${WHERE}."
+                fi
+                LFOUND=1
+                NEWFOUND="${NEWFOUND} ${filename}"
+                return
+            fi
+        fi
+    fi
+}
+acquire_linux_headers() {
+    FILEDEST="${DEST}/debs/${ARCH}/${filename}"
+    search_local
+    if [ "$LFOUND" = 1 ]; then return; fi
+    URL="${DEBIANSITE}/main/l/linux-2.6/"
+    URLDEST="${CACHEDIR}/debiansite.linux"
+    search_remote
+    if [ "$LFOUND" = 1 ]; then return; fi
+    URL="${SNAPSHOT}/package/linux-2.6/${KERNEL}/"
+    URLDEST="${CACHEDIR}/snapshot.${KERNEL}"
+    search_snapshot
+    if [ "$LFOUND" = 1 ]; then return; fi
+    NOTFOUND="${NOTFOUND} ${filename}"
+}
+acquire_module_source() {
+    FILEDEST="${DEST}/debs/${ARCH}/${filename}"
+    search_local
+    if [ "$LFOUND" = 1 ]; then return; fi
+    URL="${SNAPSHOT}/package/${MODULE_SOURCE_PKG}/${MODULE_VERSION}/"
+    URLDEST="${CACHEDIR}/snapshot.${MODULE}.module"
+    search_snapshot
+    if [ "$LFOUND" = 1 ]; then return; fi
+    NOTFOUND="${NOTFOUND} ${filename}"
+}
+acquire_linux_kbuild() {
+    KBUILD_FOUND=""
+    k=0
+    END=0
+    filename="linux-kbuild-${KBUILD}_${KBUILD}-${k}_${ARCH}.deb"
+    URL="${DEBIANSITE}/main/l/linux-kbuild-2.6/"
+    URLDEST="${CACHEDIR}/debiansite.kbuild"
+    download_with_curl
+    if [ "$FAILED" != 1 ]; then
+        VERSIONS=$(grep " linux-kbuild-${KBUILD}_${KBUILD}-[0-9]*_${ARCH}.deb$" "$URLDEST" |cut -f2 -d_|sort -nr -t- -k 2|head -1)
+        WHERE="Debian ftpsite"
+    fi
+    if [ -z "$VERSIONS" ]; then
+        URL="${SNAPSHOT}/package/linux-kbuild-2.6/"
+        URLDEST="${CACHEDIR}/snapshot.kbuild"
+        download_with_curl
+        if [ "$FAILED" = "1" ]; then
+            VERSIONS="${KBUILD}-1 ${KBUILD}-2 ${KBUILD}-3"
+            WHERE="Debian snapshot"
+            NETWORK="no"
+        else
+            VERSIONS=$(grep "li..a.href=.${KBUILD}" < $URLDEST |cut -f2 -d\"|cut -f1 -d/|head -n 1)
+            WHERE="guessing"
+        fi
+    fi
+    if [ "$SILENT" -lt 1 ]; then
+        echo "Versions of linux-kbuild-${KBUILD}: $VERSIONS ($WHERE)."
+    fi
+    FINALWHERE=""
+    for VERS in $VERSIONS; do
+        WHERE=""
+        filename="linux-kbuild-${KBUILD}_${VERS}_${ARCH}.deb"
+        if [ -f "$DEST/debs/${ARCH}/${filename}" ]; then
+            WHERE="the repository"
+        fi
+        FILEDEST="${CACHEDIR}/${filename}"
+        if [ -z "$WHERE" ]; then
+            search_local
+        fi
+        if [ -z "$WHERE" ] && [ "$NETWORK" != "no" ]; then
+            URL="${DEBIANSITE}/main/l/linux-kbuild-2.6/"
+            URLDEST="${CACHEDIR}/debiansite.kbuild"
+            search_remote
+        fi
+        if [ -z "$WHERE" ] && [ "$NETWORK" != "no" ]; then
+            URL="${SNAPSHOT}/package/linux-kbuild-2.6/${VERS}/"
+            URLDEST="${CACHEDIR}/snapshot.kbuild.${KBUILD}.${VERS}"
+            search_snapshot
+        fi
+        if [ -n "$WHERE" ]; then
+            KBUILD_FOUND="$filename"
+            FINALWHERE="$WHERE"
+        fi
+    done
+    if [ -n "$FINALWHERE" ]; then
+        if [ "$FINALWHERE" != "the repository" ]; then
+            filename="${KBUILD_FOUND}"
+            cp "${CACHEDIR}/${filename}" "${DEST}/debs/${ARCH}/${filename}"
+            NEWFOUND="${NEWFOUND} ${filename}"
+            if [ "$SILENT" -lt 1 ]; then
+                echo "Found ${filename} in ${WHERE}."
+            fi
+        fi
+    else
+        FAILEDVERS=$(echo "$VERSIONS"|fmt -w 1|head -n 1)
+        filename="linux-kbuild-${KBUILD}_${VERS}_${ARCH}.deb"
+        NOTFOUND="${NOTFOUND} ${filename}"
+    fi
+}
+while read i; do
+    eval "$i"
+    filename="linux-headers-${KVERS}_${KERNEL}_${ARCH}.deb"
+    acquire_linux_headers
+    filename="linux-headers-${KCOMMON}-common_${KERNEL}_${ARCH}.deb"
+    acquire_linux_headers
+    acquire_linux_kbuild
+done < $tmpfilebis
+if [ "$MODULE_ARCH" = "all" ]; then
+    for ARCH in $ARCHES; do
+        filename="${MODULE_SOURCE}_${MODULE_VERSION}_all.deb"
+        acquire_module_source
+    done
+else
+    for ARCH in $ARCHES; do
+        filename="${MODULE_SOURCE}_${MODULE_VERSION}_${ARCH}.deb"
+        acquire_module_source
+    done    
+fi
+if [ -n "$NEWFOUND" ]; then
+    echo "These new packages were added to the cache:"
+    echo "$NEWFOUND"|fmt -w 1|LANG=C sort -u
+fi
+for ARCH in $ARCHES; do
+    cd "${DEST}/debs/${ARCH}"
+    dpkg-scanpackages . /dev/null 2>/dev/null > Packages
+    echo "Origin: localrep
+    Label: localrep
+    Codename: ${BASEDIST}
+    Date: $(TZ=UTC LC_CTIME=C LANG=C date -R)
+    Architectures: ${ARCHES}
+    Components: main contrib non-free
+    Description: localrep
+    MD5Sum:" > Release
+    md5sum Packages |sed -e 's/^/ /g' >> Release
+done
+if [ -n "$NOTFOUND" ]; then
+    echo "I could not find some packages:"
+    echo "$NOTFOUND"|fmt -w 1|LANG=C sort -u
+else
+    if [ "$SILENT" = 0 ] && [ -z "$LISTANDSTOP" ]; then
+        echo "All packages were found."
+    fi
+fi
+if [ "$DOWNLOADONLY" = 1 ]; then
+    exit 0
+fi
+
+FAILED=""
+if [ "$SILENT" -gt 0 ]; then
+    SILENTBIG=" 1>&3"
+    SILENTMA="-q"
+fi
+if [ "$SILENT" = "2" ]; then
+    SILENTBIG="$SILENCESMALL"
+fi
+if [ -n "$LISTANDSTOP" ]; then
+    for ARCH in $ARCHES; do
+        for k in $(grep -E '^Package: linux-headers-2.[0-9].[0-9]+' $DEST/debs/${ARCH}/Packages|grep -v -- -common|grep -v -- -all|cut -f2 -d' '|cut -f3- -d-); do
+            for version in $(sed -ne "/Package: linux-headers-${k}\$/,/^\$/ p" < $DEST/debs/${ARCH}/Packages|grep ^Version|cut -f2 -d' ');do
+                echo "$k=$version=$ARCH"
+            done
+        done|LANG=C sort
+    done
+    exit 0
+fi
+for ARCH in $ARCHES; do
+    . ~/.pbuilderrc
+    NEWFILES=""
+    GOODFILES=""
+    echo "vvvvvvvvvvvvvvvvvvvvvv ${DIST} vvvvvvvvvvvvvvvvvvvvvv"
+    SCRIPT="${CACHEDIR}/script.${DIST}.sh"
+    echo "#!/bin/sh"  > $SCRIPT
+    echo "echo \" * Preparing environment\" $SILENTBIG" >> $SCRIPT
+    echo "cd /usr/src" >> $SCRIPT
+    echo "cp /etc/apt/sources.list /etc/apt/sources.list.new" >> $SCRIPT
+    echo "echo \"Package: *\" >> /etc/apt/preferences" >> $SCRIPT
+    echo "echo \"Pin: release o=localrep\" >> /etc/apt/preferences" >> $SCRIPT
+    echo "echo \"Pin-Priority: 1010\" >> /etc/apt/preferences" >> $SCRIPT
+    echo "echo \"\" >> /etc/apt/preferences" >> $SCRIPT
+    echo "echo \"deb file:${DEST}/debs/${ARCH} /\">/etc/apt/sources.list" >> $SCRIPT
+    echo "cat /etc/apt/sources.list.new >> /etc/apt/sources.list" >> $SCRIPT
+    echo "${APTGET} update" >> $SCRIPT
+    echo "${APTGET} install module-assistant" >> $SCRIPT
+    echo "echo \" * Module ${MODULE} version ${MODULE_VERSION}\" $SILENTBIG" >> $SCRIPT
+    echo "${APTGET} install ${MODULE_SOURCE}=${MODULE_VERSION}" >> $SCRIPT
+    for k in $(grep -E '^Package: linux-headers-2.[0-9].[0-9]+' $DEST/debs/${ARCH}/Packages|grep -v -- -common|grep -v -- -all|cut -f2 -d' '|cut -f3- -d-); do
+        for version in $(sed -ne "/Package: linux-headers-${k}\$/,/^\$/ p" < $DEST/debs/${ARCH}/Packages|grep ^Version|cut -f2 -d' ');do
+            NEWFILENAME="${MODULE_NAME}-${k}_${MODULE_VERSION}+${version}_${ARCH}.deb"
+            if [ ! -f "${DEST}/new/${ARCH}/${NEWFILENAME}" ]; then
+                echo "echo \" * Kernel version ${k} (${version})\" $SILENTBIG" >> $SCRIPT
+                echo "m-a ${SILENTMA} -i -t -l ${k} prepare" >> $SCRIPT
+                echo "${APTGET} install linux-headers-${k}=${version}" >> $SCRIPT
+                echo "m-a ${SILENTMA} -i -t a-b -l ${k} ${MODULE_SOURCE}" >> $SCRIPT
+                echo "${APTGET} --purge remove linux-headers-${k}" >> $SCRIPT
+                echo "m-a ${SILENTMA} -i -t clean ${MODULE_SOURCE}" >> $SCRIPT
+                echo "file='${MODULE_NAME}-${k}_${MODULE_VERSION}+${version}_${ARCH}.deb'" >> $SCRIPT
+                echo "[ -f \"\${file}\" ]&& echo \" ==> done\" $SILENTBIG || echo \" ==> failed\" $SILENTBIG" >> $SCRIPT
+                echo "mv -f \"\${file}\" ${DEST}/new/${ARCH}/" >> $SCRIPT
+                NEWFILES="${NEWFILES} ${MODULE_NAME}-${k}_${MODULE_VERSION}+${version}_${ARCH}.deb"
+            else
+                echo "echo \" * Kernel version ${k} (${version})\" $SILENTBIG" >> $SCRIPT
+                echo "echo \" ==> already done\" $SILENTBIG" >> $SCRIPT
+                echo "$NEWFILENAME has already been built."
+            fi
+        done
+    done
+    echo "# END OF SCRIPT ON DIST ${DIST}" >> $SCRIPT
+    if [ -n "$NEWFILES" ]; then
+        if [ "$SILENT" -gt 0 ]; then
+            BINDMOUNTSOPT="${DEST}" DIST=${DIST} spbuilder --execute $SCRIPT 3>&1 >/dev/null 2>&1
+        else
+            BINDMOUNTSOPT="${DEST}" DIST=${DIST} spbuilder --execute $SCRIPT 3>&1
+        fi
+        for i in $NEWFILES; do
+            if [ ! -f "${DEST}/new/${ARCH}/${i}" ]; then
+                FAILED="${FAILED} ${i}"
+            else
+                GOODFILES="${GOODFILES} ${i}"
+            fi
+        done
+    fi
+    cd ${DEST}/new/${ARCH}
+    rm -f ${MODULE_NAME}-${ARCH}.changes
+    if [ $(find . -name "${MODULE_NAME}*.deb"|wc -l) -gt 0 ]; then
+        a=$(find . -name "${MODULE_NAME}*.deb"|xargs echo)
+        if [ "$SILENT" -gt 0 ]; then
+            SILENTOPTION="-q"
+        else
+            SILENTOPTION=
+        fi
+        uploadchangestool $SILENTOPTION $a
+        if [ -f "${MODULE_NAME}-${ARCH}.changes" ]; then
+            cp ${MODULE_NAME}-${ARCH}.changes ${GOODFILES} ${DEST}/results/
+        fi
+    fi
+    echo "^^^^^^^^^^^^^^^^^^^^^^ ${DIST} ^^^^^^^^^^^^^^^^^^^^^^"
+done
+exit 0
+#BEGINARGS environment_variables
+case $VARIABLE in
+    ARCH|BASEDIST|BACKPORTS|DIST) ## The distribution
+        ;;
+    MADEST) #(default ~/pbuilder/m-a)# Storage place for the repository
+        ;;
+    MODULE) #(default nvidia)# Module (as in -m) 
+        ;;
+    SNAPSHOTSITE) #(default http://snapshot-dev.debian.org)# Snapshot archive URL
+        ;;
+esac
+###
+###Any  deb  put  in  $MADEST/debs will be available to the
+###compilation environment.
+###
+###Currently,  the  module nvidia is default. Something else should be put
+###there.
+#ENDARGS environment_variables
+#BEGINARGS files
+case file in 
+    $MADEST/results) ## Generated deb and changes files. Will persist after a standard clean. Not split among various architectures.
+    ;;
+    $MADEST/new) ## Generated deb files.
+    ;;
+    $MADEST/debs) ## Archive of kernel headers packages.
+    ;;
+    $MADEST/graveyard) ## Deleted files from the debs section. Will persist after a standard clean.
+    ;;
+    $MADEST/cache) ## Various cache files, useful for debugging. Not split among various architectures.
+esac
+###
+###Unless told otherwise, all these directories are split among the  various
+###architectures and will be deleted by invoking a standard clean.
+#ENDARGS files

@@ -1,0 +1,8 @@
+Please read the license in COPYING (which is similar to
+/usr/share/common-licenses/GPL-2), and read the copyright information
+in the copyright file to understand why this package is in fact non-free.
+
+The package is delivered with the trained neural networks, but it is
+possible to retrain them with what is bound in the source (albeit the
+result will be different, due to the non-deterministic nature of the
+training).

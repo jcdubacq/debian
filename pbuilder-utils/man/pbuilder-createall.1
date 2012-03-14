@@ -1,0 +1,40 @@
+.TH PBUILDER-CREATEALL "1" "April 2010" "3\.3" "User Commands"
+.SH NAME
+pbuilder-createall \- creates images for multiple pbuilders
+.SH SYNOPSIS
+.B pbuilder-createall [options]
+.SH DESCRIPTION
+pbuilder\-createall creates all the images for \fBspbuilder\fR.
+.SH OPTIONS
+.TP
+\fB\-\-help|\-h\fR
+This help text
+.TP
+\fB\-\-dist|\-d\fR \fIdistribution\fR
+Create only for these distributions
+.TP
+\fB\-\-quick|\-q\fR
+Do not clobber already existing images
+.PP
+The usage of the \fIquick\fR option is useful if new chroots were added,
+but will not fix formerly incorrect chroots.
+.SH FILES
+.TP
+\fB$HOME/.pbuilderrc\fR
+Created/modified by pbuilder\-setup.
+.SH AUTHORS
+Written by Jean-Christophe Dubacq
+.SH SEE ALSO
+.BR "debify" "(1), "
+.BR "pbuilder-module" "(1), "
+.BR "pbuilder-setup" "(1), "
+.BR "pbuilder-updateall" "(1), "
+.BR "spbuilder" "(1), "
+.BR "uploadchangestool" "(1)"
+.SH COPYRIGHT
+Copyright \(co 2010 Jean-Christophe Dubacq.
+.PP
+BSD License.
+.br
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.

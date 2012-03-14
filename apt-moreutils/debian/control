@@ -1,0 +1,25 @@
+Source: apt-moreutils
+Section: misc
+Priority: optional
+Maintainer: Jean-Christophe Dubacq <jcdubacq1@free.fr>
+Build-depends: debhelper (>= 7.0.50~)
+Standards-Version: 3.8.4
+Vcs-Browser: https://www-lipn.univ-paris13.fr/projects/jcdubacq/browser/debian/trunk/apt-moreutils
+Vcs-Svn: https://www-lipn.univ-paris13.fr/svn/jcdubacq/debian/trunk/apt-moreutils
+Homepage: https://www-lipn.univ-paris13.fr/projects/jcdubacq/wiki/AptMoreUtils
+
+Package: apt-moreutils
+Architecture: all
+Depends: python, python-apt (>= 0.7.93~), ${misc:Depends}
+Description: Miscellaneous utilities for package management
+ apt-origins checks in the apt sources where a package is downloadable
+ from, and assigns each package to an origin. It can then display how many
+ packages come from each source and which ones.
+ .
+ apt-missing shows missing dependencies (or recommends, or else) of installed
+ packages
+ .
+ dpkg-speedup is a collection of recipes to help speed up dpkg's operation.
+ .
+ dpkg-checkconf helps sorting out files in /etc as pristine, obsolete or
+ modified.

@@ -1,0 +1,22 @@
+Source: pbuilder-utils
+Section: misc
+Priority: optional
+Maintainer: Jean-Christophe Dubacq <jcdubacq1@free.fr>
+Build-depends: debhelper (>= 7.0.50~)
+Standards-Version: 3.8.4
+Vcs-Browser: https://www-lipn.univ-paris13.fr/projects/jcdubacq/browser/debian/trunk/pbuilder-utils
+Vcs-Svn: https://www-lipn.univ-paris13.fr/svn/jcdubacq/debian/trunk/pbuilder-utils
+Homepage: https://www-lipn.univ-paris13.fr/projects/jcdubacq/wiki/PbuilderUtils
+
+Package: pbuilder-utils
+Architecture: all
+Depends: sudo, pbuilder, ${misc:Depends}
+Recommends: dput, devscripts, curl
+Suggests: gnupg-agent
+Description: Miscellaneous wrappers for pbuilder
+ This package includes miscellaneaous wrappers that allow easy deployment
+ of multiple images for pbuilder and seamless use of 32/64 bit images in
+ a setup with an amd64 kernel (and either i386 or amd64 userland utilities).
+ .
+ pbuilder-module, debify and uploadchangestool require curl and devscripts
+ to work. dput is used by uploadchangestool and debify.

@@ -1,0 +1,26 @@
+#!/bin/sh
+. /etc/chroot_settings
+BACKPORTED_PACKAGES="debhelper debian-backports-keyring"
+TOBEMARKED=$(echo "$BACKPORTED_PACKAGES"|fmt -w 1|sort -u)
+MARKED=$(grep ^Package: /etc/apt/preferences|cut -f2 -d' '|sort -u)
+if grep -q "www.backports.org" /etc/apt/sources.list; then
+        true
+else
+    echo "deb http://www.backports.org/debian ${BASEDIST}-backports main contrib non-free" >> /etc/apt/sources.list
+    INSTALLKEYRING=1
+fi
+if [ "$TOBEMARKED" != "$MARKED" ]; then
+    rm -f /etc/apt/preferences
+    for pack in $BACKPORTED_PACKAGES; do
+        echo "Package: $pack
+Pin: release a=${BASEDIST}-backports
+Pin-Priority: 999
+">>  /etc/apt/preferences
+    done
+fi
+apt-get update
+if [ "$INSTALLKEYRING" = 1 ]; then 
+    apt-get --allow-unauthenticated install debian-backports-keyring
+    apt-get update
+fi
+true

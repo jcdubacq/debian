@@ -1,0 +1,184 @@
+pbuilder-utils (3.3.0) unstable; urgency=low
+
+  * pbuilder-setup: add alias for UNRELEASED (sid)
+  * debify: -r is now default, -k is used to keep former builds.
+  * debify: cleanup orig retrieval. Should work better in various situations.
+  * pbuilder-utils: fix dash -> hyphens in man pages
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Mon, 26 Apr 2010 16:35:46 +0200
+
+pbuilder-utils (3.2.8) unstable; urgency=low
+
+  * Switch to snapshot.debian.org
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Mon, 19 Apr 2010 11:25:18 +0200
+
+pbuilder-utils (3.2.7) unstable; urgency=low
+
+  * debify: fix big error in cleaning of sources
+  * debify: fix invokation of gpg-agent
+  * debify: fix assume-yes logic (for uploads)
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Wed, 14 Apr 2010 10:52:14 +0200
+
+pbuilder-utils (3.2.6) unstable; urgency=low
+
+  * debify: make unpacking automatic
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Wed, 14 Apr 2010 00:50:44 +0200
+
+pbuilder-utils (3.2.5) unstable; urgency=low
+
+  * debify: add option to unpack source of foreign packages
+  * debify: add action "info" to give info about the packages
+  * debify: add option to delete source of foreign packages
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 13 Apr 2010 22:47:45 +0200
+
+pbuilder-utils (3.2.4) unstable; urgency=low
+
+  * spbuilder: fix ordering of commands so that args are not ignored
+  * pbuilder-setup: revert policy for DEBEMAIL
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 13 Apr 2010 16:09:56 +0200
+
+pbuilder-utils (3.2.3) unstable; urgency=low
+
+  * pbuilder-setup: now generate something really passing BINDMOUNTSOPT
+  * pbuilder-setup: remove the mounting of /usr/src by default
+  * pbuilder-module: add nvidia legacy (173xx) support
+  * pbuilder-module: support the new style of pbuilderrc
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 30 Mar 2010 01:44:04 +0200
+
+pbuilder-utils (3.2.2) unstable; urgency=low
+
+  * pbuilder-setup: default to ${HOME}/pbuilder for main dir
+  * pbuilder-createall: fix typo and manpage
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Mon, 29 Mar 2010 00:44:43 +0200
+
+pbuilder-utils (3.2.1) unstable; urgency=low
+
+  * pbuilder-setup: fix condition about bad arch
+  * pbuilder-createall: add options --quick and --dist
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Mon, 29 Mar 2010 00:12:36 +0200
+
+pbuilder-utils (3.2.0) unstable; urgency=low
+
+  * pbuilder-utils: big rewrite to support only one arch
+  * pbuilder-utils: enhance help system, simplify call
+  * pbuilder-utils: names and calling conventions changed
+  * pbuilder-setup: more support for options, more documentation
+  * pbuilder-setup: backports and security now supported through hooks
+  * debify: allow absence of gnupg-agent
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Thu, 25 Mar 2010 04:13:15 +0800
+
+pbuilder-utils (3.1.1) unstable; urgency=low
+
+  * debify: do not fail in usual cases
+  * debify: add clean-after-build option (-c)
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Mon, 08 Mar 2010 15:25:33 +0100
+
+pbuilder-utils (3.1.0) unstable; urgency=low
+
+  * pbuilder-utils: extend the help system
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Sat, 06 Mar 2010 22:35:03 +0100
+
+pbuilder-utils (3.0.0) unstable; urgency=low
+
+  * debify: complete rewrite
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 02 Mar 2010 17:17:54 +0100
+
+pbuilder-utils (2.6.2) unstable; urgency=low
+
+  * pbuilder-module: Fix snapshot URL
+  * pbuilder-module: Add environment variables descriptions to man page
+  * debify: fix gpg-agent logic
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Sun, 28 Feb 2010 21:51:30 +0100
+
+pbuilder-utils (2.6.1) unstable; urgency=low
+
+  * Fix quiet option usage
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Thu, 04 Feb 2010 01:52:22 +0100
+
+pbuilder-utils (2.6.0) unstable; urgency=low
+
+  * pbuilder-utils: add homepage and vcs fields
+  * pbuilder-module: renamed (from pbuilder-nvidia)
+  * pbuilder-module: support several modules
+  * pbuilder-module: rework options to ease usage
+  * uploadchangestool: remove license from inside script
+  * uploadchangestool: add quiet mode
+  * New help system (for pbuilder-module, uploadchangestool)
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Thu, 04 Feb 2010 01:49:46 +0100
+
+pbuilder-utils (2.5.2) unstable; urgency=low
+
+  * Fix DEBEMAIL/DEBFULLNAME in uploadchangestool
+  * Update Standards-Version to 3.8.4 (no changes)
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 02 Feb 2010 11:35:44 +0100
+
+pbuilder-utils (2.5.1) unstable; urgency=low
+
+  * Fix typo in uploadchangestool man page
+  * Remove useless snippet at end of BSD license (not an institution)
+  * Fix license terms
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Fri, 29 Jan 2010 13:22:52 +0100
+
+pbuilder-utils (2.5) unstable; urgency=low
+
+  * Add uploadchangestool utility to pbuilder-utils
+  * Use uploadchangestool in pbuilder-nvidia
+  * Do not change the maintainer for pbuilder-nvidia-built modules
+  * Fix DEBEMAIL setting in pbuilder-setup
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Fri, 29 Jan 2010 12:03:23 +0100
+
+pbuilder-utils (2.4) unstable; urgency=low
+
+  * Add pbuilder-nvidia utility to pbuilder-utils
+  * Fix version numbers in manpages
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 26 Jan 2010 00:15:53 +0100
+
+pbuilder-utils (2.3) unstable; urgency=low
+
+  * spbuilder: Add correct backports detection
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Sat, 23 Jan 2010 07:51:32 +0100
+
+pbuilder-utils (2.2) unstable; urgency=low
+
+  * debify: add quick backport capability
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 19 Jan 2010 13:28:14 +0100
+
+pbuilder-utils (2.1) unstable; urgency=low
+
+  * Add support for backports distributions
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 19 Jan 2010 06:52:41 +0100
+
+pbuilder-utils (2) unstable; urgency=low
+
+  * Add man pages
+  * Finish pbuilder-setup
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Thu, 14 Jan 2010 15:57:02 +0100
+
+pbuilder-utils (1) unstable; urgency=low
+
+  * Initial release.
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Thu, 14 Jan 2010 14:17:40 +0100

@@ -1,0 +1,67 @@
+#!/bin/sh
+set -e
+# Documentation
+HELPUTILS="${HELPUTILS:-/usr/lib/pbuilder-utils}"
+NAME="pbuilder-createall"
+SHORTUSAGE="creates images for multiple pbuilders"
+USAGE="$NAME [options]"
+SEEALSO="debify/1 pbuilder-createall/1 pbuilder-module/1 pbuilder-setup/1 pbuilder-updateall/1 spbuilder/1 uploadchangestool/1"
+#
+#BEGINARGS description
+###pbuilder-createall creates all the images for <<spbuilder>>.
+#ENDARGS description
+
+# Help
+. "$HELPUTILS/lib-help.sh"
+
+QUICK=
+CHOICEDISTRIBS=
+#BEGINARGS options
+while [ -n "$1" ]; do
+    case "$1" in
+        --help|-h) ## This help text
+            HELP="help"
+            shift
+            ;;
+        --dist|-d) #distribution# Create only for these distributions
+            CHOICEDISTRIBS="${CHOICEDISTRIBS} $2"
+            shift 2
+            ;;
+        --quick|-q) ## Do not clobber already existing images
+            QUICK=1
+            shift
+            ;;
+        *)
+            help_options "$1" || echo "Unknown option $1"
+            shift
+            ;;
+    esac
+done
+###
+###The usage of the <quick> option is useful if new chroots were added,
+###but will not fix formerly incorrect chroots.
+#ENDARGS options
+do_help
+
+. ~/.pbuilderrc
+unset IFS
+[ -d ${MAINDIR}/base ] && [ -d ${MAINDIR}/build ] || echo "Structure was not created correctly"
+for i in ${CHOICEDISTRIBS:-${DISTRIBS}}; do
+    for j  in $ARCHES; do
+        unset BASEDIST BACKPORTS ARCH
+        DIST="$i";ARCH="$j"
+        . ~/.pbuilderrc
+        if [ -z "$QUICK" ]||[ ! -e "${BASETGZ}" ]; then
+            $DEBUG env DIST="$DIST" spbuilder --create --debootstrapopts --arch --debootstrapopts "$ARCH" --distribution "$BASEDIST"
+        elif [ -e "${BASETGZ}" ]; then
+            echo "$BASETGZ already exists, skipping."
+        fi
+    done
+done
+exit $?
+#BEGINARGS files
+case file in
+    $HOME/.pbuilderrc) ## Created/modified by pbuilder-setup.
+    ;;
+esac
+#ENDARGS files

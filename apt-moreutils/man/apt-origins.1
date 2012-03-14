@@ -1,0 +1,60 @@
+.TH APT\-ORIGINS "1" "February 2010" "1\.7" "User Commands"
+.SH NAME
+apt\-origins \- display origin of installed packages
+.SH SYNOPSIS
+.B apt\-origins [options]
+.SH DESCRIPTION
+.PP
+apt\-origins checks in the apt sources where a package is downloadable
+from, and assigns each package to an origin (the ordered list of sources,
+found either on the command line or in a configuration file)\. It can then
+display how many packages come from each source and which ones\. It also
+displays not downloadable packages and packages downloadable from known
+sources not considered in the ordered list of sources\.
+.SH OPTIONS
+.TP
+\fB\-h\fR|\fB\-\-help\fR
+This help text
+.TP
+\fB\-l\fR|\fB\-\-list\fR
+Just list available distributions
+.TP
+\fB\-c\fR|\fB\-\-count\fR
+Just display package count by origin
+.TP
+\fB\-m\fR|\fB\-\-manual\fR
+Only display manually installed packages
+.TP
+\fB\-t\fR|\fB\-\-tabular\fR
+Use tabular output format for origin display
+.TP
+\fB\-C\fR|\fB\-\-columns=\fR \fIinteger\fR
+Set the number of columns of the output
+.TP
+\fB\-L\fR|\fB\-\-lines=\fR \fIinteger\fR
+Set the maximal number of packages that can be displayed
+.TP
+\fB\-o\fR|\fB\-\-order=\fR \fIstring\fR
+Set the order in which packages are in the distributions\.
+This is a space-jointed string of stanzas like
+alias1~site1/archive1/o=origin1/l=label1/a=arch1 where alias1 is the display
+name of a distribution of name archive1 at site1, label1 and origin1 being the
+values in the Release file. "none" will purge the preceding sources. Giving
+only the alias will reselect the defined alias if none was given.
+Regexp stanza for package names can be used instead of a mirror.
+Simply use REName:pkgname.*$ for any package named beginning by pkgname).
+.SH NOTES
+Stanza format changed in version 1.7. Just append /a= to the end of your
+existing lines if you upgrade from 1.6.
+.SH FILES
+.TP
+\fB~/.apt\-origins\fR
+ Ordered list of stanzas alias~site/archive/o=origin/l=label
+.SH AUTHOR
+Written by Jean\-Christophe Dubacq.
+.SH COPYRIGHT
+Copyright \(co 2010 Jean\-Christophe Dubacq.
+License BSD
+.br
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.

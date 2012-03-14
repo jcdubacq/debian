@@ -1,0 +1,236 @@
+#!/usr/bin/python
+"""Check the origin of all packages"""
+
+import getopt,sys
+import apt_pkg
+import apt.progress.text
+import os
+import re
+import types
+progusage="apt-origins [options]"
+shortoptions=["h","l","c","m","t","C:","L:","o:"]
+longoptions=["help", "list","count","manual","tabular","columns=","lines=","order=","help-nroff"]
+argstype=['','','','','','integer','integer','string']
+explanation=['This help text',
+             'Just list available distributions',
+             'Just display package count by origin',
+             'Only display manually installed packages',
+             'Use tabular output format for origin display',
+             'Set the number of columns of the output',
+             'Set the maximal number of packages that can be displayed',
+             'Set the order in which packages are in the distributions.\n    This is a space-jointed string of stanzas like\n    alias1~site1/archive1/o=origin1/l=label1/a=arch1 where alias1 is the display name of\n    a distribution of name archive1 at site1, label1 and origin1 being the\n    values in the Release file. "none" will purge the preceding sources. Giving\n    only the alias will reselect the defined alias if none was given.\n    Regexp stanza for package names can be used instead of a mirror.\n    Simply use REName:pkgname.*$ for any package named beginning by pkgname).'
+             ]
+
+def usage():
+    """Usage for this program."""
+    print progusage
+    for k in range(len(longoptions)):
+        if longoptions[k]=='help-nroff':
+            continue
+        if k<len(shortoptions):
+            x='-'+shortoptions[k][0:1]+'|--'+longoptions[k]
+            x=x+argstype[k]
+        else:
+            x='--'+longoptions[k]+argstype[k]
+        print "  %-20s %s" % (x,explanation[k])
+
+def usagenroff():
+    """Usage for this program in NROFF format."""
+    print progusage
+    print ".SH OPTIONS"
+    for k in range(len(longoptions)):
+        if longoptions[k]=='help-nroff':
+            continue
+        if k<len(shortoptions):
+            x='\\fB-'+shortoptions[k][0:1]+'\\fR|\\fB--'+longoptions[k]+'\\fR'
+        else:
+            x='\\fB--'+longoptions[k]+'\\fR'
+        if len(argstype[k])>0:
+            x=x+" \\fI"+argstype[k]+"\\fR"
+        print ".TP"
+        print x
+        print explanation[k]
+
+def main():
+    """The main function"""
+    apt_pkg.init_config()
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "".join(shortoptions),
+                                   longoptions)
+    except getopt.GetoptError:
+        usage()
+        sys.exit(1)
+    justlist=False
+    justcount=False
+    onlymanual=False
+    optiontabular=False
+    defsources={}
+    xsources=[]
+    xlimit=100
+    cols=80
+    environfile=False
+    home=os.getenv('HOME',default='.')
+    try:
+        f=open(home+'/.apt-origins','r')
+        environfile=True
+        for line in f:
+            if len(line)>1 and line[0] != '#':
+                s=line.rstrip('\n')
+                x=s.find('~')
+                if x!=-1:
+                    xsources.append(s)
+                    defsources[s[0:x]]=s
+        f.close()
+    except IOError:
+        True
+    for o,a in opts:
+        if o in ("-h","--help"):
+            usage()
+            sys.exit()
+        elif o in ("--help-nroff"):
+            usagenroff()
+            sys.exit()
+        elif o in ("-l","--list"):
+            justlist=True
+        elif o in ("-c","--count"):
+            justcount=True
+        elif o in ("-t","--total"):
+            optiontabular=True
+        elif o in ("-m","--manual"):
+            onlymanual=True
+        elif o in ("-L","--lines"):
+            xlimit=int(a)
+        elif o in ("-C","--columns"):
+            cols=int(a)
+        elif o in ("-o","--order"):
+            if (a=='none'):
+                xsources=[]
+            else:
+                x=a.find('~')
+                if x==-1 and defsources[a]:
+                    xsources.append(defsources[a])
+                else:
+                    xsources.append(a)
+        else:
+            assert False, "unhandled option"
+    apt_pkg.init_system()
+    f = open('/dev/null', 'w')
+    cache=apt_pkg.Cache(apt.progress.text.OpProgress(f))
+    depcache=apt_pkg.DepCache(cache)
+    apt_pkg.init()
+    origin={}
+    best={}
+    xsources.append('installed~/now/o=/l=/a=')
+    xsources.append('other~REName:.*$')
+    out=len(xsources)
+    count=[]
+    packages=[]
+    sources=[]
+    naming={}
+    originalpattern={}
+    for i in range(out):
+        count.append(0)
+        packages.append([])
+        sources.append(0)
+    for v in xsources:
+        k=xsources.index(v)
+        xx=v.find('~')
+        if xx!=-1:
+            a=v[0:xx]
+            c=v[xx+1:]
+        else:
+            c=v
+            a=v
+        xx=c.find('REName:')
+        if xx==0:
+            originalpatternstring=c
+            c=re.compile(c[xx+7:])
+            originalpattern[c]=originalpatternstring
+        sources[k]=c
+        naming[c]=a
+    if justlist:
+        heuristic=re.compile(r"(.(org|net|com)$)|(^www.)|(^ftp.[a-z]{2,3}.)|(^ftp.)")
+        for pkg in cache.packages:
+            versions=pkg.version_list
+            for version in versions:
+                if version != None:
+                    for pfile,_ in version.file_list:
+                        cpt=pfile.site+'/'+pfile.archive+'/o='+pfile.origin+'/l='+pfile.label+'/a='+pfile.architecture
+                        alias_heuristic=re.sub(heuristic,'',pfile.site)+'.'+pfile.archive;
+                        if not(cpt in naming):
+                            naming[cpt]=alias_heuristic+":"+pfile.site
+        print "#other and installed are always added by this program"
+        print "#Check that aliases are meaningful enough and UNIQUE"
+        if environfile:
+            print "#order of your .apt-origins was not preserved"
+        print "#other: downloadable packages from unnamed repositories"
+        print "#installed: packages installed but not downloadable"
+        for s in sorted(naming.keys(), key=lambda x: naming[x]):
+            if naming[s]!='installed' and naming[s]!='other':
+                if type(s)==types.StringType:
+                    print naming[s]+'~'+s
+                else:
+                    print naming[s]+'~'+originalpattern[s]
+        sys.exit()
+    for pkg in sorted(cache.packages, key=lambda pkg: pkg.name):
+        version=pkg.current_ver
+        if version != None and pkg.current_state == apt_pkg.CURSTATE_INSTALLED and (not(onlymanual) or not(depcache.is_auto_installed(pkg))):
+            for pfile,_ in version.file_list:
+                cpt=pfile.site+'/'+pfile.archive+'/o='+pfile.origin+'/l='+pfile.label+'/a='+pfile.architecture
+                if not(cpt in naming):
+                    naming[cpt]=cpt
+                where=-1
+                for cptmatch in sources:
+                    where=where+1
+                    if type(cptmatch)==types.StringType:
+                        if cptmatch==cpt:
+                            break
+                    else:
+                        if cptmatch.match(pkg.name):
+                            break
+                if pkg.name in best:
+                    if best[pkg.name]>where:
+                        best[pkg.name]=where
+                else:
+                    best[pkg.name]=where
+    for s in best.keys():
+        count[best[s]]=1+count[best[s]]
+        packages[best[s]].append(s)
+    if justcount:
+        for k in sources:
+            kk=sources.index(k)
+            if count[kk]>0:
+                print '%s:%d' % (naming[k],count[kk])
+        sys.exit()
+    else:
+        if optiontabular:
+            for k in sources:
+                kk=sources.index(k)
+                for u in sorted(packages[kk]):
+                    print k+':'+u
+        else:
+            for k in sources:
+                new=''
+                kk=sources.index(k)
+                if len(packages[kk])>0:
+                    print ','+("-" * (cols-2))+'.'
+                    print '|'+naming[k].center(cols-2)+'|'
+                    print '`'+("-" * (cols-2))+'\''
+                if len(packages[kk])<=xlimit:
+                    for u in sorted(packages[kk]):
+                        if len(new)+len(u)+1<=cols:
+                            if new!='':
+                                new=new+' '+u
+                            else:
+                                new=u
+                        else:
+                            print new
+                            new=u
+                    if len(new)>0:
+                        print new
+                else:
+                    print 'Too many packages (%d). Use --tabular or --lines=X (x>=%d).' % (len(packages[kk]),len(packages[kk]))
+
+if __name__ == '__main__':
+    main() 
+    

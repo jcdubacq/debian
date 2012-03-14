@@ -1,0 +1,72 @@
+apt-moreutils (1.7) unstable; urgency=low
+
+  * The format changed, so change major version
+  * Fix small remaining bug with apt-origins -l
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Wed, 14 Mar 2012 08:25:38 +0100
+
+apt-moreutils (1.6.2) unstable; urgency=low
+
+  * apt-origins: Re-enable correct listing with apt-origins -l
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 13 Mar 2012 16:52:25 +0100
+
+apt-moreutils (1.6.1) unstable; urgency=low
+
+  * apt-origins: fix bug with apt-origins -l and REName lines
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 01 Mar 2011 07:57:24 +0100
+
+apt-moreutils (1.6) unstable; urgency=low
+
+  * apt-origins: add REName: stanzas syntax.
+  * "other" is now less important than "installed"
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Sat, 29 Jan 2011 23:53:13 +0100
+
+apt-moreutils (1.5) unstable; urgency=low
+
+  * apt-moreutils: fix manpages
+  * apt-origins: add --manual option to list only manual packages
+  * apt-moreutils: simplify the help system
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Thu, 25 Mar 2010 07:51:02 +0800
+
+apt-moreutils (1.4) unstable; urgency=low
+
+  * apt-moreutils: use shell help system
+  * dpkg-speedup: move to sbin
+  * dpkg-checkconf: new binary, not functional yet
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Tue, 09 Mar 2010 11:01:27 +0100
+
+apt-moreutils (1.3) unstable; urgency=low
+
+  * apt-origins: Use ~/.apt-origins as configuration file
+  * apt-origins: stanzas now use site/o=origin/l=label
+  * apt-origins: aliases can be used in -o even if none was used
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Sun, 21 Feb 2010 23:24:09 +0100
+
+apt-moreutils (1.2) unstable; urgency=low
+
+  * Add apt-missing to the package
+  * Enhance help system
+  * Add python dependency
+  * Fix apt-origins manpage
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Sat, 06 Feb 2010 01:52:24 +0100
+
+apt-moreutils (1.1) unstable; urgency=low
+
+  * Update Standards-Version to 3.8.4 (no change)
+  * Rename package_origins to apt-origins
+  * Remove licence from inside scripts
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Wed, 03 Feb 2010 10:20:03 +0100
+
+apt-moreutils (1.0) unstable; urgency=low
+
+  * Initial release.
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Fri, 29 Jan 2010 13:18:39 +0100

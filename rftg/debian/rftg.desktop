@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Race for the Galaxy
+GenericName=Strategy Game
+Comment=A space-opera card-based strategy game
+Icon=rftg
+Exec=rftg
+Categories=Game;StrategyGame;

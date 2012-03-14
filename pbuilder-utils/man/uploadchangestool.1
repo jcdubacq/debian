@@ -1,0 +1,58 @@
+.TH UPLOADCHANGESTOOL "1" "April 2010" "3\.3" "User Commands"
+.SH NAME
+uploadchangestool \- upload debian packages not already uploaded
+.SH SYNOPSIS
+.B uploadchangestool [\fIoptions\fB] \fIpackage\fB [\fIpackages\fB]
+.SH DESCRIPTION
+uploadchangestool  uses  the  environment  variable POOLURL and DIST to
+check whether packages already exist in the pool designated by POOLURL.
+If they do not, it creates a fake .changes file and uses dput to upload
+it.
+.SH OPTIONS
+.TP
+\fB\-\-inplace|\-i\fR
+Use current directory and links, not copies in /tmp
+.TP
+\fB\-\-pool|\-p\fR \fIpool\fR
+Check packages against this debian repository
+.TP
+\fB\-\-dist|\-d\fR \fIdist\fR
+Make uploads to this distribution
+.TP
+\fB\-\-no|\-n\fR
+Assume default answer is no for uploads
+.TP
+\fB\-\-yes|\-y\fR
+Assume default answer is yes, do not ask
+.TP
+\fB\-\-quiet|\-q\fR
+Be more quiet
+.SH ENVIRONMENT VARIABLES
+.TP
+\fBPOOLURL\fR
+Check this repository for the presence of packages (as in \-p)
+.TP
+\fBDIST\fR
+Distribution (as in \-d; default is read from ~/.pbuilderrc)
+.PP
+Many other environment variables will have effect on this program.
+.SH FILES
+.TP
+\fB$HOME/.pbuilderrc\fR
+Created/modified by pbuilder\-setup. Read if DIST is not set.
+.SH AUTHORS
+Written by Jean-Christophe Dubacq
+.SH SEE ALSO
+.BR "debify" "(1), "
+.BR "pbuilder-createall" "(1), "
+.BR "pbuilder-module" "(1), "
+.BR "pbuilder-setup" "(1), "
+.BR "pbuilder-updateall" "(1), "
+.BR "spbuilder" "(1)"
+.SH COPYRIGHT
+Copyright \(co 2010 Jean-Christophe Dubacq.
+.PP
+BSD License.
+.br
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.

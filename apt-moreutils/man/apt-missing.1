@@ -1,0 +1,42 @@
+.TH APT\-MISSING "1" "February 2010" "1\.5" "User Commands"
+.SH NAME
+apt\-missing \- check installed packages for missing dependencies
+.SH SYNOPSIS
+.B apt\-missing [options] [packages]
+.SH DESCRIPTION
+.\" Add any additional description here
+.PP
+apt\-missing checks given packages (or all if none given) to see if they
+are missing some dependency. By default, Recommends is the type of
+dependency that is checked, but any other can be selected. A list of
+unfulfilled dependency clauses, ordered by package and type, is output.
+.SH OPTIONS
+.TP
+\fB\-h\fR|\fB\-\-help\fR
+This help text
+.TP
+\fB\-d\fR|\fB\-\-depends\fR
+Missing Depends or Pre\-Depends
+.TP
+\fB\-r\fR|\fB\-\-recommends\fR
+Missing Recommends (default)
+.TP
+\fB\-s\fR|\fB\-\-suggests\fR
+Missing Suggests
+.TP
+\fB\-a\fR|\fB\-\-any\fR
+Missing positive dependency (as above)
+.TP
+\fB\-t\fR|\fB\-\-type=\fR\fIstring\fR
+Arbitrary dependency type (e.g. Enhances)
+.TP
+\fB\-p\fR|\fB\-\-package=\fR\fIstring\fR
+List of packages (all if none given)
+.SH AUTHOR
+Written by Jean\-Christophe Dubacq.
+.SH COPYRIGHT
+Copyright \(co 2010 Jean\-Christophe Dubacq.
+License BSD
+.br
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.

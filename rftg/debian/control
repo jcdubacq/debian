@@ -1,0 +1,31 @@
+Source: rftg
+Section: non-free/games
+Priority: optional
+Maintainer: Jean-Christophe Dubacq <jcdubacq1@free.fr>
+Build-depends: debhelper (>= 7.0.50~), libgtk2.0-dev (>= 2.16.0)
+Standards-Version: 3.9.1
+Vcs-Browser: https://www-lipn.univ-paris13.fr/projects/jcdubacq/browser/debian/trunk/rftg
+Vcs-Svn: https://www-lipn.univ-paris13.fr/svn/jcdubacq/debian/trunk/rftg
+Homepage: http://www.keldon.net/rftg/
+
+Package: rftg
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, rftg-data (=${source:Version})
+Description: player-vs-computer version of Race for the Galaxy card game
+ This is a project to create artificial intelligence opponent(s) for
+ the card game Race for the Galaxy. Currently, the base game and both
+ released expansions are supported.
+ .
+ This package contains the binary executables needed to play.
+
+Package: rftg-data
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: rftg (=${source:Version})
+Description: player-vs-computer version of Race for the Galaxy card game (data)
+ This is a project to create artificial intelligence opponent(s) for 
+ the card game Race for the Galaxy. Currently, the base game and both
+ released expansions are supported.
+ .
+ This package contains the game data. It is probably useless without the game
+ contained in the rftg package.

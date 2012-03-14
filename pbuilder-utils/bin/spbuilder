@@ -1,0 +1,43 @@
+#!/bin/sh
+# Documentation
+HELPUTILS="${HELPUTILS:-/usr/lib/pbuilder-utils}"
+NAME="spbuilder"
+SHORTUSAGE="launches a pbuilder with correct personnality flags"
+USAGE="$NAME [<pbuilder options>]"
+SEEALSO="debify/1 pbuilder/8 pbuilder-createall/1 pbuilder-module/1 pbuilder-setup/1 pbuilder-updateall/1 spbuilder/1 uploadchangestool/1"
+#
+#BEGINARGS description
+###spbuilder is a wrapper around pbuilder that sets the right personality
+###flags to use amd64 or i386 images in the right mode.
+###
+###<spbuilder> uses sudo to call pbuilder from a normal user account and
+###sets the following arguments to pbuilder: BINDMOUNTS DEBEMAIL HOOKDIR
+###APTCACHE COMPONENTS ARCHITECTURE BASETGZ BUILDPLACE BUILDRESULT.
+#ENDARGS description
+
+# Help
+if [ "$1" != "${1#--help}" ]; then
+    . "$HELPUTILS/lib-help.sh"
+    help_options "$1" || echo "Unknown option $1"
+    do_help
+fi
+
+. ~/.pbuilderrc
+unset IFS
+if [ "${ARCH}" = "i386" ]; then
+    PREFIX=linux32
+elif [ "${ARCH}" = "amd64" ]; then
+    PREFIX=linux64
+else
+    PREFIX=env
+fi
+OPERATION="$1"
+shift
+$PREFIX sudo /usr/sbin/pbuilder "$OPERATION" --bindmounts "$BINDMOUNTS" --debemail "$DEBEMAIL" --hookdir "$HOOKDIR" --aptcache "$APTCACHE" --components "$COMPONENTS" --architecture "$ARCH" --basetgz "$BASETGZ" --buildplace "$BUILDPLACE" --buildresult "$BUILDRESULT" "$@"
+exit $?
+#BEGINARGS files
+case file in
+    $HOME/.pbuilderrc) ## Created/modified by pbuilder-setup.
+    ;;
+esac
+#ENDARGS files
