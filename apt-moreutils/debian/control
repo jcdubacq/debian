@@ -2,7 +2,7 @@ Source: apt-moreutils
 Section: misc
 Priority: optional
 Maintainer: Jean-Christophe Dubacq <jcdubacq1@free.fr>
-Build-depends: debhelper (>= 7.0.50~)
+Build-depends: debhelper
 Standards-Version: 3.8.4
 Vcs-Browser: https://www-lipn.univ-paris13.fr/projects/jcdubacq/browser/debian/trunk/apt-moreutils
 Vcs-Svn: https://www-lipn.univ-paris13.fr/svn/jcdubacq/debian/trunk/apt-moreutils
