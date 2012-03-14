@@ -1,3 +1,9 @@
+apt-moreutils (1.7~bpo60+1) squeeze-backports; urgency=low
+
+  * Backport to squeeze
+
+ -- Jean-Christophe Dubacq <jcdubacq1@free.fr>  Wed, 14 Mar 2012 08:45:48 +0100
+
 apt-moreutils (1.7) unstable; urgency=low
 
   * The format changed, so change major version
